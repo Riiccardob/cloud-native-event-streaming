@@ -1,0 +1,4 @@
+{ "type": "login", "matricola": "12345", "timestamp": "2025-10-13T12:00:00Z" }
+{ "type": "download_materiale", "matricola": "12345", "materiale_id": "MAT101", "timestamp": "2025-10-13T12:05:00Z" }
+{ "type": "quiz_submission", "matricola": "12345", "quiz_id": "QUIZ202", "score": 8, "timestamp": "2025-10-13T12:10:00Z" }
+{ "type": "prenotazione_esame", "matricola": "12345", "esame_id": "ES101", "timestamp": "2025-10-13T12:20:00Z" }
