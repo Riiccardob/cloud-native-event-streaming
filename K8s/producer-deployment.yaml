@@ -64,7 +64,7 @@ spec:
     spec:
       containers:
       - name: producer
-        image: producer:secure
+        image: producer:latest
         imagePullPolicy: IfNotPresent
         env:
         - name: KAFKA_BOOTSTRAP
@@ -101,5 +101,4 @@ spec:
   - protocol: TCP
     port: 5000
     targetPort: 5000
-    nodePort: 30001
-  type: NodePort
+  type: ClusterIP

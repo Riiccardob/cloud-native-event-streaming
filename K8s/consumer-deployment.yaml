@@ -1,42 +1,3 @@
-# apiVersion: apps/v1
-# kind: Deployment
-# metadata:
-#   name: consumer
-#   namespace: kafka
-# spec:
-#   replicas: 1
-#   selector:
-#     matchLabels:
-#       app: consumer
-#   template:
-#     metadata:
-#       labels:
-#         app: consumer
-#     spec:
-#       containers:
-#       - name: consumer
-#         image: consumer:latest
-#         imagePullPolicy: IfNotPresent
-#         env:
-#         - name: KAFKA_BOOTSTRAP
-#           value: "uni-it-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093"
-#         - name: SASL_USERNAME
-#           valueFrom:
-#             secretKeyRef:
-#               name: consumer-user
-#               key: username
-#         - name: SASL_PASSWORD
-#           valueFrom:
-#             secretKeyRef:
-#               name: consumer-user
-#               key: password
-#         - name: MONGO_URI
-#           value: "mongodb://user:password@mongo-mongodb.mongo.svc.cluster.local:27017/student_events"
-
-
-
-
-
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -54,7 +15,7 @@ spec:
     spec:
       containers:
       - name: consumer
-        image: consumer:secure
+        image: consumer:latest
         imagePullPolicy: IfNotPresent
         env:
         - name: KAFKA_BOOTSTRAP
@@ -69,7 +30,7 @@ spec:
         - name: KAFKA_CA
           value: "/etc/ssl/certs/kafka/ca.crt"
         - name: MONGO_URI
-          value: "mongodb://user:password@mongo-mongodb.mongo.svc.cluster.local:27017/student_events"
+          value: "mongodb://appuser:appuserpass@mongo-mongodb.kafka.svc.cluster.local:27017/student_events?authSource=student_events"
         volumeMounts:
         - name: kafka-ca
           mountPath: /etc/ssl/certs/kafka

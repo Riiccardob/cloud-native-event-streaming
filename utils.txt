@@ -1,21 +1,25 @@
-curl -X POST http://192.168.49.2:30001/event \
--H "Content-Type: application/json" \
--d '{"type":"login","matricola":"12345","timestamp":"2025-10-13T12:00:00Z"}'
+# LOGIN
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login -H "Content-Type: application/json" -d '{"user_id": "alice"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login -H "Content-Type: application/json" -d '{"user_id": "bob"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login -H "Content-Type: application/json" -d '{"user_id": "charlie"}'
 
-curl -X POST http://192.168.49.2:30001/event \
--H "Content-Type: application/json" \
--d '{"type":"download_materiale","matricola":"12345","materiale_id":"MAT101","timestamp":"2025-10-13T12:05:00Z"}'
+# QUIZ
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz -H "Content-Type: application/json" -d '{"user_id": "alice", "quiz_id": "math101", "score": 24, "course_id": "math"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz -H "Content-Type: application/json" -d '{"user_id": "bob", "quiz_id": "math101", "score": 15, "course_id": "math"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz -H "Content-Type: application/json" -d '{"user_id": "charlie", "quiz_id": "phys101", "score": 28, "course_id": "physics"}'
 
-curl -X POST http://192.168.49.2:30001/event \
--H "Content-Type: application/json" \
--d '{"type":"quiz_submission","matricola":"12345","quiz_id":"QUIZ202","score":8,"timestamp":"2025-10-13T12:10:00Z"}'
+# DOWNLOAD MATERIALI
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download -H "Content-Type: application/json" -d '{"user_id": "alice", "materiale_id": "pdf1", "course_id": "math"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download -H "Content-Type: application/json" -d '{"user_id": "bob", "materiale_id": "pdf1", "course_id": "math"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download -H "Content-Type: application/json" -d '{"user_id": "charlie", "materiale_id": "pdf2", "course_id": "physics"}'
+
+# PRENOTAZIONE ESAMI
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/exam -H "Content-Type: application/json" -d '{"user_id": "alice", "esame_id": "math1", "course_id": "math"}'
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/exam -H "Content-Type: application/json" -d '{"user_id": "bob", "esame_id": "phys1", "course_id": "physics"}'
 
 
-192.168.49.2
-
-curl http://192.168.49.2:31866/metrics/logins
-curl http://192.168.49.2:31866/metrics/quiz
-curl http://192.168.49.2:31866/metrics/downloads
-curl http://192.168.49.2:31866/metrics/exams
-
-31866 http ingress metrics
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/logins
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/quiz/success-rate
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/quiz/average-score
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/downloads
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/exams

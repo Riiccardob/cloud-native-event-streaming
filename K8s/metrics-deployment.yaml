@@ -19,7 +19,7 @@ spec:
         imagePullPolicy: IfNotPresent
         env:
         - name: MONGO_URI
-          value: "mongodb://user:password@mongo-mongodb.mongo.svc.cluster.local:27017/student_events"
+          value: "mongodb://appuser:appuserpass@mongo-mongodb.kafka.svc.cluster.local:27017/student_events?authSource=student_events"
         ports:
         - containerPort: 5001
 ---

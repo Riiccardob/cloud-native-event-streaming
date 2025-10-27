@@ -1,0 +1,37 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.env
+*.egg-info/
+.env*
+venv/
+env/
+
+# Docker
+*.log
+*.tar
+*.pid
+*.sock
+.dockerignore
+
+# Kubernetes / Secrets
+**/secret.yaml
+**/configmap.yaml
+*.crt
+*.key
+
+# Build files
+*.DS_Store
+*.zip
+*.tar.gz
+
+# IDE / Editor
+.vscode/
+.idea/
+*.iml
+
+# Minikube / Cluster
+minikube/
+.kube/
