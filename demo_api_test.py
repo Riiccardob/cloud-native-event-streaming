@@ -49,7 +49,7 @@ def send_event(event_type):
         res = requests.post(BASE_PRODUCER + endpoint, json=data, timeout=5)
         print(f"[{datetime.now().isoformat()}] Sent {event_type.upper()} → {res.status_code}")
     except Exception as e:
-        print(f"❌ Error sending {event_type}: {e}")
+        print(f"Error sending {event_type}: {e}")
 
 def get_metrics():
     endpoints = [
@@ -58,7 +58,7 @@ def get_metrics():
         "/metrics/downloads",
         "/metrics/exams"
     ]
-    print("\n📊 METRICS SNAPSHOT")
+    print("\nMETRICS SNAPSHOT")
     for ep in endpoints:
         try:
             res = requests.get(BASE_METRICS + ep, timeout=5)
@@ -67,7 +67,7 @@ def get_metrics():
             print(f"{ep}: error ({e})")
 
 if __name__ == "__main__":
-    print("🚀 Starting demo loop (Ctrl+C to stop)\n")
+    print("Starting demo loop (Ctrl+C to stop)\n")
     while True:
         send_event(random.choice(["login", "quiz", "download", "exam"]))
         time.sleep(2)

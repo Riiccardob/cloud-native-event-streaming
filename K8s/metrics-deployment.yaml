@@ -23,6 +23,10 @@ spec:
             secretKeyRef:
               name: mongo-creds
               key: MONGO_URI
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
         ports:
         - containerPort: 5001
         #probes

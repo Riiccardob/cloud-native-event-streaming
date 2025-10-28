@@ -9,7 +9,7 @@ metadata:
 plugin: cors
 config:
   origins:
-    # Permette al tuo file locale e a qualsiasi altro dominio di chiamarti
+    # Permette a chiunque di fare chiamate
     - "*" 
   methods:
     - GET

@@ -21,12 +21,12 @@ spec:
         - name: KAFKA_BOOTSTRAP
           value: "uni-it-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093"
         - name: SASL_USERNAME
-          value: "consumer-user"   # <── Username fisso
+          value: "consumer-user"   
         - name: SASL_PASSWORD
           valueFrom:
             secretKeyRef:
               name: consumer-user
-              key: password         # <── solo password dal Secret
+              key: password         
         - name: KAFKA_CA
           value: "/etc/ssl/certs/kafka/ca.crt"
         - name: MONGO_URI
