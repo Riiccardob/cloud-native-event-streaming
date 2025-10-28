@@ -16,6 +16,10 @@ try:
 except Exception as e:
     print(f"❌ MongoDB connection error: {e}")
 
+@app.route("/healthz")
+def healthz():
+    return jsonify({"status": "ok"}), 200
+
 @app.route("/metrics/logins", methods=["GET"])
 def total_logins():
     count = collection.count_documents({"type": "login"})
@@ -29,7 +33,11 @@ def avg_logins_per_user():
         {"$group": {"_id": None, "average_logins": {"$avg": "$count"}}}
     ]
     result = list(collection.aggregate(pipeline))
-    return jsonify(result[0] if result else {"average_logins": 0})
+    if result:
+        return jsonify({"average_logins": result[0]["average_logins"]})
+    else:
+        return jsonify({"average_logins": 0})
+    # return jsonify(result[0] if result else {"average_logins": 0})
 
 @app.route("/metrics/quiz/success-rate", methods=["GET"])
 def quiz_success_rate():

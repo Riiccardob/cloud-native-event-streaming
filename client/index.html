@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pannello Progetto Kafka</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f4f7f6; }
+        .container { max-width: 1000px; margin: 20px auto; padding: 20px; background: #fff; border-radius: 8px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+        h1, h2 { color: #333; border-bottom: 2px solid #eee; padding-bottom: 10px; }
+        h1 { text-align: center; }
+        fieldset { border: 1px solid #ddd; border-radius: 5px; margin-bottom: 20px; background: #fafafa; }
+        legend { font-weight: bold; font-size: 1.2em; color: #1a73e8; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .input-group { margin-bottom: 15px; }
+        .input-group label { display: block; margin-bottom: 5px; font-weight: 500; }
+        .input-group input { width: 95%; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
+        button { padding: 10px 15px; border: none; border-radius: 4px; cursor: pointer; font-size: 1em; }
+        .btn-send { background-color: #1a73e8; color: white; }
+        .btn-send:hover { background-color: #1558b0; }
+        .btn-random { background-color: #e8f0fe; color: #1a73e8; border: 1px solid #1a73e8; }
+        .btn-get { background-color: #34a853; color: white; margin: 5px; }
+        .btn-get:hover { background-color: #2a8441; }
+        .actions { margin-top: 15px; display: flex; gap: 10px; }
+        #logger { background: #2d2d2d; color: #00ff00; padding: 15px; border-radius: 5px; margin-top: 20px; font-family: 'Courier New', Courier, monospace; white-space: pre-wrap; word-wrap: break-word; max-height: 400px; overflow-y: auto; }
+        .config-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <h1>Pannello di Controllo Kafka</h1>
+
+        <fieldset>
+            <legend>Configurazione Endpoint</legend>
+            <div class="config-grid">
+                <div class="input-group">
+                    <label for="base-producer">Producer Base URL</label>
+                    <input type="text" id="base-producer" value="http://producer.192.168.49.2.nip.io:30648">
+                </div>
+                <div class="input-group">
+                    <label for="base-metrics">Metrics Base URL</label>
+                    <input type="text" id="base-metrics" value="http://metrics.192.168.49.2.nip.io:30648">
+                </div>
+            </div>
+        </fieldset>
+
+        <h2>Producer API (Invio Eventi)</h2>
+        <div class="grid">
+            
+            <fieldset>
+                <legend>POST /event/login</legend>
+                <div class="input-group">
+                    <label for="login-user">user_id</label>
+                    <input type="text" id="login-user" placeholder="es. alice">
+                </div>
+                <div class="actions">
+                    <button class="btn-send" onclick="sendLogin()">Invia Evento</button>
+                    <button class="btn-random" onclick="populateRandom('login')">Dati Random</button>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>POST /event/quiz</legend>
+                <div class="input-group">
+                    <label for="quiz-user">user_id</label>
+                    <input type="text" id="quiz-user" placeholder="es. bob">
+                </div>
+                <div class="input-group">
+                    <label for="quiz-id">quiz_id</label>
+                    <input type="text" id="quiz-id" placeholder="es. math101">
+                </div>
+                <div class="input-group">
+                    <label for="quiz-course">course_id</label>
+                    <input type="text" id="quiz-course" placeholder="es. math">
+                </div>
+                <div class="input-group">
+                    <label for="quiz-score">score</label>
+                    <input type="number" id="quiz-score" placeholder="es. 25">
+                </div>
+                <div class="actions">
+                    <button class="btn-send" onclick="sendQuiz()">Invia Evento</button>
+                    <button class="btn-random" onclick="populateRandom('quiz')">Dati Random</button>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>POST /event/download</legend>
+                <div class="input-group">
+                    <label for="dl-user">user_id</label>
+                    <input type="text" id="dl-user" placeholder="es. charlie">
+                </div>
+                <div class="input-group">
+                    <label for="dl-material">materiale_id</label>
+                    <input type="text" id="dl-material" placeholder="es. pdf1">
+                </div>
+                <div class="input-group">
+                    <label for="dl-course">course_id</label>
+                    <input type="text" id="dl-course" placeholder="es. history">
+                </div>
+                <div class="actions">
+                    <button class="btn-send" onclick="sendDownload()">Invia Evento</button>
+                    <button class="btn-random" onclick="populateRandom('download')">Dati Random</button>
+                </div>
+            </fieldset>
+
+            <fieldset>
+                <legend>POST /event/exam</legend>
+                <div class="input-group">
+                    <label for="exam-user">user_id</label>
+                    <input type="text" id="exam-user" placeholder="es. eva">
+                </div>
+                <div class="input-group">
+                    <label for="exam-id">esame_id</label>
+                    <input type="text" id="exam-id" placeholder="es. phys_final">
+                </div>
+                <div class="input-group">
+                    <label for="exam-course">course_id</label>
+                    <input type="text" id="exam-course" placeholder="es. physics">
+                </div>
+                <div class="actions">
+                    <button class="btn-send" onclick="sendExam()">Invia Evento</button>
+                    <button class="btn-random" onclick="populateRandom('exam')">Dati Random</button>
+                </div>
+            </fieldset>
+        </div>
+
+        <h2>Metrics API (Lettura Dati)</h2>
+        <div>
+            <button class="btn-get" onclick="sendRequest('/metrics/logins', 'GET')">GET Logins</button>
+            <button class="btn-get" onclick="sendRequest('/metrics/quiz/success-rate', 'GET')">GET Quiz Success Rate</button>
+            <button class="btn-get" onclick="sendRequest('/metrics/downloads', 'GET')">GET Downloads</button>
+            <button class="btn-get" onclick="sendRequest('/metrics/exams', 'GET')">GET Exams</button>
+            <button class="btn-get" onclick="sendRequest('/metrics/logins/average', 'GET')">GET Avg. Logins</button>
+            <button class="btn-get" onclick="sendRequest('/metrics/activity/last7days', 'GET')">GET Activity (7 days)</button>
+            <button class="btn-get" onclick="sendRequest('/metrics/quiz/average-score', 'GET')">GET Avg. Scores</button>
+        </div>
+
+        <h2>Logger Risposte</h2>
+        <pre id="logger">In attesa di comandi...</pre>
+
+    </div>
+
+    <script>
+        // --- DATI RANDOM (da demo_test.py) ---
+        const USERS = ["alice", "bob", "charlie", "dave", "eva"];
+        const COURSES = ["math", "physics", "history"];
+        const QUIZZES = ["math101", "phys101", "hist101"];
+        const MATERIALS = ["pdf1", "pdf2", "pdf3"];
+
+        function getRandom(arr) {
+            return arr[Math.floor(Math.random() * arr.length)];
+        }
+
+        // --- FUNZIONI PER POPOLARE I CAMPI ---
+        function populateRandom(type) {
+            const user = getRandom(USERS);
+            const course = getRandom(COURSES);
+
+            if (type === 'login') {
+                document.getElementById('login-user').value = user;
+            } 
+            else if (type === 'quiz') {
+                document.getElementById('quiz-user').value = user;
+                document.getElementById('quiz-id').value = getRandom(QUIZZES);
+                document.getElementById('quiz-course').value = course;
+                document.getElementById('quiz-score').value = Math.floor(Math.random() * 21) + 10; // Punteggio 10-30
+            }
+            else if (type === 'download') {
+                document.getElementById('dl-user').value = user;
+                document.getElementById('dl-material').value = getRandom(MATERIALS);
+                document.getElementById('dl-course').value = course;
+            }
+            else if (type === 'exam') {
+                document.getElementById('exam-user').value = user;
+                document.getElementById('exam-id').value = `${course}_final`;
+                document.getElementById('exam-course').value = course;
+            }
+        }
+
+        // --- FUNZIONI PER INVIARE I DATI ---
+        function sendLogin() {
+            const body = {
+                user_id: document.getElementById('login-user').value
+            };
+            sendRequest('/event/login', 'POST', body);
+        }
+
+        function sendQuiz() {
+            const body = {
+                user_id: document.getElementById('quiz-user').value,
+                quiz_id: document.getElementById('quiz-id').value,
+                course_id: document.getElementById('quiz-course').value,
+                score: parseInt(document.getElementById('quiz-score').value, 10) // Assicura che sia un numero
+            };
+            sendRequest('/event/quiz', 'POST', body);
+        }
+
+        function sendDownload() {
+            const body = {
+                user_id: document.getElementById('dl-user').value,
+                materiale_id: document.getElementById('dl-material').value,
+                course_id: document.getElementById('dl-course').value
+            };
+            sendRequest('/event/download', 'POST', body);
+        }
+
+        function sendExam() {
+            const body = {
+                user_id: document.getElementById('exam-user').value,
+                esame_id: document.getElementById('exam-id').value,
+                course_id: document.getElementById('exam-course').value
+            };
+            sendRequest('/event/exam', 'POST', body);
+        }
+
+
+        // --- FUNZIONE FETCH GENERICA ---
+        const logOutput = document.getElementById('logger');
+
+        function logToPanel(message, isError = false) {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = isError ? '#ff4d4d' : '#00ff00';
+            logOutput.innerHTML = `<span style="color: ${color};">[${timestamp}] ${message}</span>\n` + logOutput.innerHTML;
+        }
+
+        async function sendRequest(endpoint, method, body = null) {
+            const isGet = method === 'GET';
+            const base = isGet ? document.getElementById('base-metrics').value : document.getElementById('base-producer').value;
+            const url = base + endpoint;
+
+            const options = {
+                method: method,
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            };
+
+            if (body) {
+                options.body = JSON.stringify(body);
+                logToPanel(`${method} ${url}\n   Corpo: ${options.body}`);
+            } else {
+                logToPanel(`${method} ${url}`);
+            }
+
+            try {
+                const response = await fetch(url, options);
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(`HTTP ${response.status}: ${JSON.stringify(data)}`);
+                }
+                
+                logToPanel(`${response.status} OK\n   Risposta: ${JSON.stringify(data, null, 2)}`);
+
+            } catch (error) {
+                logToPanel(`ERRORE: ${error.message}`, true);
+                logToPanel("Possibile errore CORS. Vedi la guida nella console.", true);
+                console.warn(
+                    "Se vedi un errore 'Failed to fetch' o 'CORS', è normale. Il browser blocca le richieste cross-origin.\n" +
+                    "Devi abilitare CORS sul tuo API Gateway (Kong). Vedi la prossima sezione della mia risposta."
+                );
+            }
+        }
+    </script>
+</body>
+</html>

@@ -1,25 +1,111 @@
-# LOGIN
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login -H "Content-Type: application/json" -d '{"user_id": "alice"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login -H "Content-Type: application/json" -d '{"user_id": "bob"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login -H "Content-Type: application/json" -d '{"user_id": "charlie"}'
-
-# QUIZ
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz -H "Content-Type: application/json" -d '{"user_id": "alice", "quiz_id": "math101", "score": 24, "course_id": "math"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz -H "Content-Type: application/json" -d '{"user_id": "bob", "quiz_id": "math101", "score": 15, "course_id": "math"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz -H "Content-Type: application/json" -d '{"user_id": "charlie", "quiz_id": "phys101", "score": 28, "course_id": "physics"}'
-
-# DOWNLOAD MATERIALI
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download -H "Content-Type: application/json" -d '{"user_id": "alice", "materiale_id": "pdf1", "course_id": "math"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download -H "Content-Type: application/json" -d '{"user_id": "bob", "materiale_id": "pdf1", "course_id": "math"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download -H "Content-Type: application/json" -d '{"user_id": "charlie", "materiale_id": "pdf2", "course_id": "physics"}'
-
-# PRENOTAZIONE ESAMI
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/exam -H "Content-Type: application/json" -d '{"user_id": "alice", "esame_id": "math1", "course_id": "math"}'
-curl -X POST http://producer.192.168.49.2.nip.io:30648/event/exam -H "Content-Type: application/json" -d '{"user_id": "bob", "esame_id": "phys1", "course_id": "physics"}'
+#vedere log
+kubectl logs -n kafka -l app=producer -f
+kubectl logs -n kafka -l app=consumer -f
+kubectl logs -n kong -l app.kubernetes.io/name=kong -f -c proxy #logs del container proxy
+kubectl logs -n metrics -l app=metrics-service -f
 
 
+#quando modiico yaml
+kubectl apply -f consumer-deployment.yaml -n kafka
+kubectl apply -f metrics-deployment.yaml -n metrics
+#e rimuovi i pod vecchi per forzare il restart con i nuovi env:
+kubectl delete pod -n kafka -l app=consumer
+kubectl delete pod -n metrics -l app=metrics-service
+#Testa che tutto funzioni ancora:
+genera un evento:
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login \
+     -H "Content-Type: application/json" \
+     -d '{"user_id": "secret-check"}'
+#controlla i log consumer:
+kubectl logs -n kafka -l app=consumer --tail=5
+
+#quando modifico python
+cd Consumer   # cartella dove sta il Dockerfile del consumer
+docker build -t consumer:latest .
+kubectl delete pod -n kafka -l app=consumer
+# il Deployment lo ricrea automaticamente con l’immagine aggiornata
+
+#kubectl logs -n kafka -l app=consumer --tail=10
+Connected to MongoDB
+Consumer avviato, in ascolto su topic: student-events
+#per metrics
+docker build -t metrics-service:latest ./Metrics-service
+kubectl delete pod -n metrics -l app=metrics-service
+
+
+kubectl describe pod -n kafka -l app=producer | grep -A5 "Readiness"
+kubectl describe pod -n metrics -l app=metrics-service | grep -A5 "Readiness"
+
+#PRODUCER
+
+#login
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "bob"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/login \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "charlie"}'
+
+#quiz
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice", "quiz_id": "math101", "score": 24, "course_id": "math"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "bob", "quiz_id": "math101", "score": 15, "course_id": "math"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/quiz \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "charlie", "quiz_id": "phys101", "score": 28, "course_id": "physics"}'
+
+#download
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice", "materiale_id": "pdf1", "course_id": "math"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "bob", "materiale_id": "pdf1", "course_id": "math"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/download \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "charlie", "materiale_id": "pdf2", "course_id": "physics"}'
+
+#prenotazione_esame
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/exam \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "alice", "esame_id": "math1", "course_id": "math"}'
+
+curl -X POST http://producer.192.168.49.2.nip.io:30648/event/exam \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "bob", "esame_id": "phys1", "course_id": "physics"}'
+
+
+#METRICS
+
+#total login
 curl http://metrics.192.168.49.2.nip.io:30648/metrics/logins
+
+#average login 
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/logins/average
+
+#tasso successo quiz
 curl http://metrics.192.168.49.2.nip.io:30648/metrics/quiz/success-rate
+
+#voto medio per corso
 curl http://metrics.192.168.49.2.nip.io:30648/metrics/quiz/average-score
+
+#download
 curl http://metrics.192.168.49.2.nip.io:30648/metrics/downloads
+
+#prenotazione esame
 curl http://metrics.192.168.49.2.nip.io:30648/metrics/exams
+
+#attività 7 giorni
+curl http://metrics.192.168.49.2.nip.io:30648/metrics/activity/last7days

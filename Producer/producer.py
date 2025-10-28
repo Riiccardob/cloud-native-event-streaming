@@ -78,6 +78,10 @@ def produce_event(event_type: str, payload: dict):
     print(f"[PRODUCER] Evento inviato: {event_type} -> {event}", flush=True)
     return event
 
+@app.route("/healthz")
+def healthz():
+    return jsonify({"status": "ok"}), 200
+
 @app.route("/event/login", methods=["POST"])
 def produce_login():
     data = request.json or {}

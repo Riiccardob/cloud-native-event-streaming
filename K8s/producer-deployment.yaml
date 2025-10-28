@@ -80,6 +80,19 @@ spec:
           value: "/etc/ssl/certs/kafka/ca.crt"
         ports:
         - containerPort: 5000
+        #probes
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 5000
+          initialDelaySeconds: 5
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /healthz
+            port: 5000
+          initialDelaySeconds: 20
+          periodSeconds: 10
         volumeMounts:
         - name: kafka-ca
           mountPath: /etc/ssl/certs/kafka
