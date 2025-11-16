@@ -6,7 +6,7 @@ metadata:
   labels:
     strimzi.io/cluster: uni-it-cluster
 spec:
-  partitions: 1
+  partitions: 3
   replicas: 1
   config:
     retention.ms: 604800000   # 7 giorni

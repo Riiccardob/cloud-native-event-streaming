@@ -34,6 +34,13 @@ spec:
             secretKeyRef:
               name: mongo-creds
               key: MONGO_URI
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
         volumeMounts:
         - name: kafka-ca
           mountPath: /etc/ssl/certs/kafka
