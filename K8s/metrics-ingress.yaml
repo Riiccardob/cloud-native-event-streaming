@@ -4,7 +4,7 @@ metadata:
   name: metrics-ingress
   namespace: metrics
   annotations:
-    konghq.com/plugins: cors-plugin
+    konghq.com/plugins: cors-plugin,jwt-auth
     #konghq.com/strip-path: "true"
 spec:
   ingressClassName: kong
