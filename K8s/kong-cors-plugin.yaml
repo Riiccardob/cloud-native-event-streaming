@@ -1,3 +1,23 @@
+# apiVersion: configuration.konghq.com/v1
+# kind: KongClusterPlugin
+# metadata:
+#   name: cors-plugin
+#   annotations:
+#     kubernetes.io/ingress.class: kong
+#   labels:
+#     global: "true" # Questo lo rende disponibile a tutti
+# plugin: cors
+# config:
+#   origins:
+#     # Permette a chiunque di fare chiamate
+#     - "*" 
+#   methods:
+#     - GET
+#     - POST
+#     - OPTIONS
+#   headers:
+#     - Content-Type
+
 apiVersion: configuration.konghq.com/v1
 kind: KongClusterPlugin
 metadata:
@@ -5,15 +25,16 @@ metadata:
   annotations:
     kubernetes.io/ingress.class: kong
   labels:
-    global: "true" # Questo lo rende disponibile a tutti
+    global: "true" # Questo assicura che sia applicato OVUNQUE
 plugin: cors
 config:
   origins:
-    # Permette a chiunque di fare chiamate
-    - "*" 
+    - "*"
   methods:
     - GET
     - POST
-    - OPTIONS
+    - OPTIONS # Fondamentale
   headers:
+    - Authorization # Fondamentale per il JWT
     - Content-Type
+  max_age: 3600
