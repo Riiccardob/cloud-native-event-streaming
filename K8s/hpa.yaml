@@ -17,7 +17,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: 50   # scala sopra il 50% di CPU media
-
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler
@@ -38,7 +37,6 @@ spec:
         target:
           type: Utilization
           averageUtilization: 50
-
 ---
 apiVersion: autoscaling/v2
 kind: HorizontalPodAutoscaler

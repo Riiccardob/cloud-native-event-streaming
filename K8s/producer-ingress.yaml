@@ -4,10 +4,10 @@ metadata:
   name: producer-ingress
   namespace: kafka
   annotations:
-    konghq.com/plugins: cors-plugin,jwt-auth, global-rate-limit
-    #konghq.com/strip-path: "true"
+    konghq.com/plugins: jwt-auth
+    kubernetes.io/ingress.class: kong
 spec:
-  ingressClassName: kong  
+  ingressClassName: kong
   rules:
   - host: producer.192.168.49.2.nip.io
     http:

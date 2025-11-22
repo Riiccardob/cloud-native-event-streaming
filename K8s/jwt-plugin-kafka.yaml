@@ -7,4 +7,3 @@ plugin: jwt
 config:
   claims_to_verify:
     - exp
-  run_on_preflight: false
