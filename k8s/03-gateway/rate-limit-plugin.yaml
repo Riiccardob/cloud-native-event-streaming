@@ -1,0 +1,23 @@
+# Policy per il namespace KAFKA (Producer)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit
+  namespace: kafka
+plugin: rate-limiting
+config:
+  second: 3        # 3 richieste al secondo
+  policy: local
+  hide_client_headers: false # true per vedere gli header di debug
+---
+# Policy per il namespace METRICS (Metrics Service)
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit
+  namespace: metrics
+plugin: rate-limiting
+config:
+  second: 20       # 20 richieste al secondo
+  policy: local
+  hide_client_headers: false

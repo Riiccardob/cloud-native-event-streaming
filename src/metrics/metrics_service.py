@@ -7,7 +7,7 @@ app = Flask(__name__)
 
 #Leggi il nome del pod
 POD_NAME = os.getenv("POD_NAME", "unknown-pod")
-
+# 🔗 Connessione a MongoDB
 MONGO_URI = os.environ["MONGO_URI"]
 client = MongoClient(MONGO_URI)
 db = client.student_events

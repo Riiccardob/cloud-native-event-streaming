@@ -8,7 +8,6 @@ BASE_PRODUCER="http://producer.$MINIKUBE_IP.nip.io:$KONG_PORT"
 BASE_METRICS="http://metrics.$MINIKUBE_IP.nip.io:$KONG_PORT"
 
 # --- GENERAZIONE AUTOMATICA TOKEN ---
-# Cerchiamo lo script python. Adattare il percorso se necessario.
 JWT_SCRIPT="JWTtoken/gen_jwt.py"
 
 if [ ! -f "$JWT_SCRIPT" ]; then

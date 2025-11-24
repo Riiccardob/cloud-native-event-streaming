@@ -4,7 +4,7 @@ metadata:
   name: metrics-ingress
   namespace: metrics
   annotations:
-    konghq.com/plugins: jwt-auth
+    konghq.com/plugins: jwt-auth, rate-limit, cors-plugin
     konghq.com/strip-path: "false"
     kubernetes.io/ingress.class: kong
 spec:

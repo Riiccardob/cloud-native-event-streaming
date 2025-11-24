@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniKafka Dashboard (Full API)</title>
+    <style>
+        :root { --primary: #2563eb; --success: #16a34a; --bg: #f8fafc; --panel: #ffffff; --border: #e2e8f0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1e293b; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+        
+        /* Sidebar */
+        .sidebar { background: var(--panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border); height: fit-content; }
+        h2 { font-size: 1.1rem; margin-top: 0; border-bottom: 2px solid var(--border); padding-bottom: 10px; color: #334155; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 5px; color: #64748b; }
+        input, textarea, select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace; box-sizing: border-box; }
+        input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        .token-area textarea { height: 60px; font-size: 0.75rem; resize: vertical; background: #eff6ff; border-color: #bfdbfe; }
+
+        /* Main Panel */
+        .main-content { display: flex; flex-direction: column; gap: 20px; }
+        .card { background: var(--panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        
+        /* Form Grid */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        
+        /* Buttons */
+        .btn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        button { cursor: pointer; padding: 10px; border: none; border-radius: 6px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-metrics { background: var(--success); color: white; }
+        .btn-metrics:hover { background: #15803d; }
+        .btn-magic { background: #8b5cf6; color: white; width: 100%; margin-bottom: 15px; }
+        .btn-magic:hover { background: #7c3aed; }
+        .btn-clear { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 5px 10px; font-size: 0.8rem; }
+
+        /* Logger */
+        #logger { background: #0f172a; color: #4ade80; padding: 15px; border-radius: 8px; font-family: 'Courier New', monospace; height: 350px; overflow-y: auto; font-size: 0.85rem; white-space: pre-wrap; line-height: 1.4; }
+        .log-entry { border-bottom: 1px solid #1e293b; padding-bottom: 5px; margin-bottom: 5px; }
+        .log-err { color: #f87171; }
+        .log-info { color: #94a3b8; }
+        .log-payload { color: #fbbf24; font-size: 0.8em; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h2>Configurazione</h2>
+        <div class="input-group">
+            <label>Minikube IP</label>
+            <input type="text" id="mk-ip" value="192.168.49.2" onchange="updateUrls()">
+        </div>
+        <div class="input-group">
+            <label>Kong Port</label>
+            <input type="text" id="kong-port" value="30648" onchange="updateUrls()">
+        </div>
+        <div class="input-group token-area">
+            <label>JWT Token</label>
+            <textarea id="jwt-token" placeholder="Incolla qui il token..."></textarea>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+        <div class="input-group">
+            <label>Base URL (Anteprima)</label>
+            <input type="text" id="base-url" readonly style="background: #f1f5f9; color: #64748b; font-size: 0.8em;">
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin:0; border:0;">Producer (Invio Eventi)</h2>
+                <button class="btn-magic" style="width: auto; padding: 8px 15px;" onclick="randomizeData()">Genera Dati Random</button>
+            </div>
+
+            <div class="form-grid">
+                <div class="input-group">
+                    <label>User ID</label>
+                    <input type="text" id="user-id" value="studente-1">
+                </div>
+                <div class="input-group">
+                    <label>Course ID</label>
+                    <input type="text" id="course-id" value="cloud-computing">
+                </div>
+                <div class="input-group">
+                    <label>Resource ID (Quiz/Exam/File)</label>
+                    <input type="text" id="resource-id" value="quiz-101">
+                </div>
+                <div class="input-group">
+                    <label>Score (Voto)</label>
+                    <input type="number" id="score" value="28" min="18" max="30">
+                </div>
+            </div>
+
+            <div class="btn-grid">
+                <button class="btn-primary" onclick="sendEvent('login')">Login</button>
+                <button class="btn-primary" onclick="sendEvent('quiz')">Submit Quiz</button>
+                <button class="btn-primary" onclick="sendEvent('download')">Download</button>
+                <button class="btn-primary" onclick="sendEvent('exam')">Prenota Esame</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Metrics (Lettura Dati)</h2>
+            <div class="btn-grid">
+                <button class="btn-metrics" onclick="fetchMetric('/healthz')">Health Check</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/logins')">Total Logins</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/logins/average')">Avg Logins/User</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/quiz/success-rate')">Quiz Success Rate</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/quiz/average-score')">Avg Score/Course</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/downloads')">Top Downloads</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/exams')">Exam Bookings</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/activity/last7days')">Trend 7 Days</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h2 style="margin:0; border:0;">Console Log</h2>
+                <button class="btn-clear" onclick="document.getElementById('logger').innerHTML = ''">Pulisci</button>
+            </div>
+            <div id="logger">Pronto...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Dati Random
+    const USERS = ["alice", "bob", "charlie", "dave", "eve", "frank", "grace"];
+    const COURSES = ["cloud-computing", "cyber-security", "data-science", "iot", "web-dev"];
+    const RESOURCES = ["quiz-1", "final-exam", "slide-pdf", "lab-docker", "quiz-2"];
+
+    function updateUrls() {
+        const ip = document.getElementById('mk-ip').value;
+        const port = document.getElementById('kong-port').value;
+        document.getElementById('base-url').value = `http://producer.${ip}.nip.io:${port}`;
+    }
+    
+    function randomizeData() {
+        document.getElementById('user-id').value = USERS[Math.floor(Math.random() * USERS.length)];
+        document.getElementById('course-id').value = COURSES[Math.floor(Math.random() * COURSES.length)];
+        document.getElementById('resource-id').value = RESOURCES[Math.floor(Math.random() * RESOURCES.length)];
+        document.getElementById('score').value = Math.floor(Math.random() * 13) + 18; // 18-30
+        log("Dati casuali generati!", "info");
+    }
+
+    function log(msg, type = 'normal') {
+        const logger = document.getElementById('logger');
+        const time = new Date().toLocaleTimeString();
+        const cls = type === 'error' ? 'log-err' : (type === 'info' ? 'log-info' : (type === 'payload' ? 'log-payload' : ''));
+        
+        const entry = document.createElement('div');
+        entry.className = 'log-entry ' + cls;
+        entry.innerHTML = `[${time}] ${msg}`;
+        logger.insertBefore(entry, logger.firstChild);
+    }
+
+    async function callApi(endpoint, method, body = null, isMetrics = false) {
+        const token = document.getElementById('jwt-token').value.trim();
+        if (!token) {
+            log("[ERROR] Token mancante! Incollalo nella sidebar.", "error");
+            return;
+        }
+
+        const ip = document.getElementById('mk-ip').value;
+        const port = document.getElementById('kong-port').value;
+        // Metrics e Producer usano host diversi
+        const hostPrefix = isMetrics ? 'metrics' : 'producer';
+        const url = `http://${hostPrefix}.${ip}.nip.io:${port}${endpoint}`;
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        };
+
+        log(`[REQ] ${method} ${endpoint}...`);
+        if(body) log(`[DATA] Payload: ${JSON.stringify(body)}`, 'payload');
+
+        try {
+            const options = { method, headers };
+            if (body) options.body = JSON.stringify(body);
+
+            const res = await fetch(url, options);
+            
+            let data;
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await res.json();
+            } else {
+                data = await res.text(); // Fallback per errori HTML di Kong (404/503)
+            }
+
+            if (res.ok) {
+                log(`[OK] [${res.status}] Success:\n${JSON.stringify(data, null, 2)}`);
+            } else {
+                log(`[ERR] [${res.status}] Error:\n${typeof data === 'object' ? JSON.stringify(data, null, 2) : data}`, "error");
+            }
+        } catch (e) {
+            log(`[NET] Network Error: ${e.message}`, "error");
+        }
+    }
+
+    function sendEvent(type) {
+        const user = document.getElementById('user-id').value;
+        const course = document.getElementById('course-id').value;
+        const resource = document.getElementById('resource-id').value;
+        const score = parseInt(document.getElementById('score').value);
+
+        let body = { user_id: user };
+        let endpoint = "";
+
+        if (type === 'login') {
+            endpoint = "/event/login";
+        } else if (type === 'quiz') {
+            endpoint = "/event/quiz";
+            body.quiz_id = resource;
+            body.course_id = course;
+            body.score = score;
+        } else if (type === 'download') {
+            endpoint = "/event/download";
+            body.materiale_id = resource;
+            body.course_id = course;
+        } else if (type === 'exam') {
+            endpoint = "/event/exam";
+            body.esame_id = resource;
+            body.course_id = course;
+        }
+
+        callApi(endpoint, "POST", body, false);
+    }
+
+    function fetchMetric(endpoint) {
+        callApi(endpoint, "GET", null, true);
+    }
+
+    // Init
+    updateUrls();
+    randomizeData();
+</script>
+
+</body>
+</html>

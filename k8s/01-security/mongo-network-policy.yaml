@@ -1,0 +1,32 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-mongo-access
+  namespace: kafka
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: mongodb # Label standard del chart Bitnami
+  policyTypes:
+  - Ingress
+  ingress:
+  # Regola 1: Permette accesso dal Consumer (stesso namespace 'kafka')
+  - from:
+    - podSelector:
+        matchLabels:
+          app: consumer
+    ports:
+    - protocol: TCP
+      port: 27017
+
+  # Regola 2: Permette accesso dal Metrics Service (namespace 'metrics')
+  - from:
+    - namespaceSelector:
+        matchLabels:
+          name: metrics   # Cerca il namespace con label name=metrics
+      podSelector:
+        matchLabels:
+          app: metrics-service
+    ports:
+    - protocol: TCP
+      port: 27017

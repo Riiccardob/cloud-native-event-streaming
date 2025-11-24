@@ -4,7 +4,7 @@ metadata:
   name: producer-ingress
   namespace: kafka
   annotations:
-    konghq.com/plugins: jwt-auth
+    konghq.com/plugins: jwt-auth, rate-limit, cors-plugin
     kubernetes.io/ingress.class: kong
 spec:
   ingressClassName: kong

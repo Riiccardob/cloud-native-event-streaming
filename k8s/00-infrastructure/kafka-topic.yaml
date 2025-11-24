@@ -7,7 +7,8 @@ metadata:
     strimzi.io/cluster: uni-it-cluster
 spec:
   partitions: 3
-  replicas: 1
+  replicas: 2  # 2 --> se un broker muore, l'altro ha i dati
   config:
-    retention.ms: 604800000   # 7 giorni
-    segment.bytes: 1073741824 # 1GB per segment
+    retention.ms: 604800000
+    segment.bytes: 1073741824
+    min.insync.replicas: 1 
