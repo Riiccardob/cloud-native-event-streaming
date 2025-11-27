@@ -1,4 +1,3 @@
-````markdown
 # Architettura Cloud-Native Event-Driven con Kafka e Kong su Kubernetes
 
 Questo repository ospita l'implementazione di un'architettura a microservizi distribuita per la gestione e l'analisi di eventi accademici. Il sistema è progettato per garantire scalabilità, resilienza e sicurezza in ambienti ad alto traffico, integrando un API Gateway (Kong) per la governance e un Message Broker (Kafka) per il disaccoppiamento asincrono.
@@ -65,7 +64,7 @@ helm repo add kong [https://charts.konghq.com](https://charts.konghq.com)
 helm install kong kong/kong -n kong --create-namespace --set ingressController.installCRDs=false --set ingressController.watchNamespaces="{kong,kafka,metrics}"
 ````
 
-### 2\. Configurazione dei Secret (Passaggio Critico)
+### 2\. Configurazione dei Secret
 
 Questa fase è necessaria per generare e iniettare le credenziali di sicurezza nel cluster. Senza questi comandi, i pod non potranno avviarsi.
 
