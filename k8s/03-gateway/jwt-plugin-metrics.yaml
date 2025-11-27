@@ -2,7 +2,7 @@ apiVersion: configuration.konghq.com/v1
 kind: KongPlugin
 metadata:
   name: jwt-auth
-  namespace: kafka
+  namespace: metrics
 plugin: jwt
 config:
   claims_to_verify:

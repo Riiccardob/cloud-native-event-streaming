@@ -41,6 +41,15 @@ spec:
           limits:
             cpu: "500m"
             memory: "256Mi"
+        livenessProbe:
+          exec:
+            command:
+            - /bin/sh
+            - -c
+            - test -f /tmp/heartbeat && [ $(($(date +%s) - $(date -r /tmp/heartbeat +%s))) -lt 30 ]
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          failureThreshold: 3
         volumeMounts:
         - name: kafka-ca
           mountPath: /etc/ssl/certs/kafka

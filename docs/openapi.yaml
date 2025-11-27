@@ -1,0 +1,324 @@
+openapi: 3.0.3
+info:
+  title: Student Events Platform API
+  description: |
+    Specifica API completa per la piattaforma **Student Events**.
+    Il sistema è distribuito su Kubernetes ed esposto tramite Kong Gateway su due host virtuali distinti.
+    
+    **Autenticazione:**
+    Tutte le chiamate richiedono un header `Authorization: Bearer <TOKEN>`.
+  version: 1.0.0
+  contact:
+    name: Riccardo Barone
+
+# Configurazione Globale Autenticazione
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  
+  schemas:
+    # Schemi di Risposta Standard
+    StatusResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        processed_by:
+          type: string
+          description: "Pod ID che ha gestito la richiesta (per debug Load Balancing)"
+    
+    HealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: "ok"
+        mongo_connected:
+          type: boolean
+        producer_connected:
+          type: boolean
+
+security:
+  - bearerAuth: []
+
+paths:
+  # ==========================================
+  #  INGESTION API (Host: Producer)
+  # ==========================================
+  /event/login:
+    post:
+      servers:
+        - url: http://producer.192.168.49.2.nip.io:30648
+      tags: [Ingestion]
+      summary: Registra accesso utente
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["user_id"]
+              properties:
+                user_id:
+                  type: string
+                event_id:
+                  type: string
+                  format: uuid
+                  description: "Opzionale. Se fornito garantisce idempotenza."
+      responses:
+        '200':
+          description: Evento inviato a Kafka.
+        '202':
+          description: Accodato localmente (Kafka Down).
+        '503':
+          description: Backpressure (Coda piena).
+
+  /event/quiz:
+    post:
+      servers:
+        - url: http://producer.192.168.49.2.nip.io:30648
+      tags: [Ingestion]
+      summary: Invia risultato quiz
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["user_id", "quiz_id", "course_id", "score"]
+              properties:
+                user_id: {type: string}
+                quiz_id: {type: string}
+                course_id: {type: string}
+                score: {type: integer}
+      responses:
+        '200':
+          description: OK
+
+  /event/download:
+    post:
+      servers:
+        - url: http://producer.192.168.49.2.nip.io:30648
+      tags: [Ingestion]
+      summary: Traccia download materiale
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["user_id", "materiale_id", "course_id"]
+              properties:
+                user_id: {type: string}
+                materiale_id: {type: string}
+                course_id: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  /event/exam:
+    post:
+      servers:
+        - url: http://producer.192.168.49.2.nip.io:30648
+      tags: [Ingestion]
+      summary: Prenotazione esame
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: ["user_id", "esame_id", "course_id"]
+              properties:
+                user_id: {type: string}
+                esame_id: {type: string}
+                course_id: {type: string}
+      responses:
+        '200':
+          description: OK
+
+  # Endpoint interni del Producer
+  # /metrics:
+  #   get:
+  #     servers:
+  #       - url: http://producer.192.168.49.2.nip.io:30648
+  #     tags: [Producer Internal]
+  #     summary: Metriche interne Producer (Coda, Errori)
+  #     description: Espone lo stato della coda locale e contatori di invio.
+  #     responses:
+  #       '200':
+  #         description: OK
+  #         content:
+  #           application/json:
+  #             schema:
+  #               type: object
+  #               properties:
+  #                 sent_counter: {type: integer}
+  #                 queued_local: {type: integer}
+  #                 failed_sends: {type: integer}
+
+  /healthz:
+    get:
+      servers:
+        - url: http://producer.192.168.49.2.nip.io:30648
+      tags: [Producer Internal]
+      summary: Health Check Producer
+      responses:
+        '200':
+          description: Healthy
+        '503':
+          description: Kafka Unreachable
+
+  # ==========================================
+  #  ANALYTICS API (Host: Metrics)
+  # ==========================================
+  /metrics/logins:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics]
+      summary: Totale Login
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  total_logins: {type: integer}
+                  source: {type: string, enum: [db, cache]}
+
+  /metrics/logins/average:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics]
+      summary: Media login per utente
+      responses:
+        '200':
+          description: OK
+
+  /metrics/quiz/success-rate:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics]
+      summary: Tasso successo Quiz
+      responses:
+        '200':
+          description: OK
+
+  /metrics/activity/last7days:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics]
+      summary: Trend ultimi 7 giorni
+      responses:
+        '200':
+          description: OK
+
+  # Endpoint Paginati (Corretti con 'items')
+  /metrics/downloads:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics - Paginated]
+      summary: Statistiche Download
+      parameters:
+        - in: query
+          name: page
+          schema:
+            type: integer
+            default: 1
+        - in: query
+          name: per_page
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Lista paginata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  # FIX: Aggiunta definizione 'items' per l'array
+                  data: 
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        materiale_id: {type: string}
+                        downloads: {type: integer}
+                  page: {type: integer}
+                  total: {type: integer}
+
+  /metrics/exams:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics - Paginated]
+      summary: Statistiche Esami
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer, default: 1}
+        - in: query
+          name: per_page
+          schema: {type: integer, default: 50}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  # FIX: Aggiunta definizione 'items' per l'array
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        course_id: {type: string}
+                        prenotazioni: {type: integer}
+                  page: {type: integer}
+                  total: {type: integer}
+
+  /metrics/quiz/average-score:
+    get:
+      servers:
+        - url: http://metrics.192.168.49.2.nip.io:30648
+      tags: [Analytics - Paginated]
+      summary: Voto medio per corso
+      parameters:
+        - in: query
+          name: page
+          schema: {type: integer, default: 1}
+        - in: query
+          name: per_page
+          schema: {type: integer, default: 50}
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        course_id: {type: string}
+                        average_score: {type: number, format: float}
+                  page: {type: integer}
+                  total: {type: integer}

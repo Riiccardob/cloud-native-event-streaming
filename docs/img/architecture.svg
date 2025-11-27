@@ -1,0 +1,197 @@
+<svg viewBox="0 0 1000 700" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <!-- Gradienti -->
+    <linearGradient id="clientGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="kongGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#f093fb;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#f5576c;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="producerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#4facfe;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#00f2fe;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="kafkaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#43e97b;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#38f9d7;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="consumerGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#fa709a;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#fee140;stop-opacity:1" />
+    </linearGradient>
+    <linearGradient id="metricsGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#30cfd0;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#330867;stop-opacity:1" />
+    </linearGradient>
+    
+    <filter id="shadow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
+      <feOffset dx="1" dy="1" result="offsetblur"/>
+      <feComponentTransfer>
+        <feFuncA type="linear" slope="0.3"/>
+      </feComponentTransfer>
+      <feMerge>
+        <feMergeNode/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+    
+    <marker id="arrowhead" markerWidth="8" markerHeight="8" refX="7" refY="3" orient="auto">
+      <polygon points="0 0, 8 3, 0 6" fill="#2d3748" />
+    </marker>
+  </defs>
+  
+  <!-- Sfondo -->
+  <rect width="1000" height="700" fill="#f8f9fa"/>
+  
+  <!-- Titolo -->
+  <text x="500" y="30" font-family="Arial, sans-serif" font-size="20" font-weight="bold" text-anchor="middle" fill="#2d3748">
+    Architettura Cloud-Native Event-Driven (Kubernetes)
+  </text>
+  
+  <!-- LAYER 1: CLIENT -->
+  <g id="client">
+    <rect x="50" y="70" width="180" height="80" rx="8" fill="url(#clientGrad)" filter="url(#shadow)"/>
+    <text x="140" y="100" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">CLIENT</text>
+    <text x="140" y="120" font-family="Arial, sans-serif" font-size="10" text-anchor="middle" fill="white">Browser / Mobile</text>
+    <text x="140" y="135" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="white">HTTPS + JWT</text>
+  </g>
+  
+  <!-- LAYER 2: KONG GATEWAY -->
+  <g id="kong">
+    <rect x="300" y="70" width="400" height="80" rx="8" fill="url(#kongGrad)" filter="url(#shadow)"/>
+    <text x="500" y="95" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">KONG API GATEWAY</text>
+    <text x="500" y="113" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="white">Ingress Controller</text>
+    
+    <!-- Badges -->
+    <rect x="320" y="120" width="90" height="22" rx="3" fill="rgba(255,255,255,0.3)"/>
+    <text x="365" y="135" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">JWT Auth</text>
+    
+    <rect x="420" y="120" width="90" height="22" rx="3" fill="rgba(255,255,255,0.3)"/>
+    <text x="465" y="135" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Rate Limit</text>
+    
+    <rect x="520" y="120" width="90" height="22" rx="3" fill="rgba(255,255,255,0.3)"/>
+    <text x="565" y="135" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Round Robin</text>
+    
+    <rect x="620" y="120" width="60" height="22" rx="3" fill="rgba(255,255,255,0.3)"/>
+    <text x="650" y="135" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">CORS</text>
+  </g>
+  
+  <!-- LAYER 3A: PRODUCER SERVICE -->
+  <g id="producer">
+    <rect x="80" y="210" width="200" height="110" rx="8" fill="url(#producerGrad)" filter="url(#shadow)"/>
+    <text x="180" y="235" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">PRODUCER</text>
+    <text x="180" y="250" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="white">Flask :5000</text>
+    
+    <rect x="95" y="260" width="170" height="50" rx="5" fill="rgba(255,255,255,0.25)"/>
+    <text x="105" y="275" font-family="Arial, sans-serif" font-size="8" fill="white">• Local Queue (500 max)</text>
+    <text x="105" y="288" font-family="Arial, sans-serif" font-size="8" fill="white">• Backpressure (HTTP 503)</text>
+    <text x="105" y="301" font-family="Arial, sans-serif" font-size="8" fill="white">• HPA: 1-4 replicas</text>
+  </g>
+  
+  <!-- LAYER 3B: METRICS SERVICE -->
+  <g id="metrics">
+    <rect x="720" y="210" width="200" height="110" rx="8" fill="url(#metricsGrad)" filter="url(#shadow)"/>
+    <text x="820" y="235" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">METRICS</text>
+    <text x="820" y="250" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="white">Flask :5001</text>
+    
+    <rect x="735" y="260" width="170" height="50" rx="5" fill="rgba(255,255,255,0.25)"/>
+    <text x="745" y="275" font-family="Arial, sans-serif" font-size="8" fill="white">• Cache TTL (10s)</text>
+    <text x="745" y="288" font-family="Arial, sans-serif" font-size="8" fill="white">• Aggregation Pipeline</text>
+    <text x="745" y="301" font-family="Arial, sans-serif" font-size="8" fill="white">• HPA: 1-4 replicas</text>
+  </g>
+  
+  <!-- LAYER 4: KAFKA CLUSTER -->
+  <g id="kafka">
+    <rect x="80" y="380" width="560" height="140" rx="8" fill="url(#kafkaGrad)" filter="url(#shadow)"/>
+    <text x="360" y="405" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="white">KAFKA CLUSTER (Strimzi - KRaft Mode)</text>
+    
+    <!-- Broker 1 -->
+    <rect x="100" y="420" width="120" height="90" rx="6" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="2"/>
+    <text x="160" y="438" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="white">Broker 1</text>
+    <text x="160" y="455" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Leader: P0, P2</text>
+    <text x="160" y="468" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Follower: P1</text>
+    <rect x="108" y="478" width="104" height="24" rx="3" fill="rgba(67,233,123,0.5)"/>
+    <text x="160" y="493" font-family="Arial, sans-serif" font-size="7" text-anchor="middle" fill="white">TLS + SCRAM-SHA-512</text>
+    
+    <!-- Broker 2 -->
+    <rect x="240" y="420" width="120" height="90" rx="6" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="2"/>
+    <text x="300" y="438" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="white">Broker 2</text>
+    <text x="300" y="455" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Leader: P1</text>
+    <text x="300" y="468" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Follower: P0, P2</text>
+    <rect x="248" y="478" width="104" height="24" rx="3" fill="rgba(67,233,123,0.5)"/>
+    <text x="300" y="493" font-family="Arial, sans-serif" font-size="7" text-anchor="middle" fill="white">TLS + SCRAM-SHA-512</text>
+    
+    <!-- Topic Info -->
+    <rect x="380" y="420" width="240" height="90" rx="6" fill="rgba(255,255,255,0.3)" stroke="white" stroke-width="2"/>
+    <text x="500" y="438" font-family="Arial, sans-serif" font-size="10" font-weight="bold" text-anchor="middle" fill="white">Topic: student-events</text>
+    <text x="500" y="455" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Partitions: 3 (P0, P1, P2)</text>
+    <text x="500" y="468" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Replication Factor: 2</text>
+    <text x="500" y="481" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">min.insync.replicas: 1</text>
+    <text x="500" y="494" font-family="Arial, sans-serif" font-size="8" text-anchor="middle" fill="white">Retention: 7 days</text>
+  </g>
+  
+  <!-- LAYER 5A: CONSUMER SERVICE -->
+  <g id="consumer">
+    <rect x="80" y="570" width="200" height="90" rx="8" fill="url(#consumerGrad)" filter="url(#shadow)"/>
+    <text x="180" y="595" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">CONSUMER</text>
+    <text x="180" y="610" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="white">Worker Asincrono</text>
+    
+    <rect x="95" y="620" width="170" height="32" rx="5" fill="rgba(255,255,255,0.25)"/>
+    <text x="105" y="635" font-family="Arial, sans-serif" font-size="8" fill="white">• Idempotency (_id: UUID)</text>
+    <text x="105" y="647" font-family="Arial, sans-serif" font-size="8" fill="white">• Bulk Insert (batch 20)</text>
+  </g>
+  
+  <!-- LAYER 5B: MONGODB -->
+  <g id="mongodb">
+    <rect x="380" y="570" width="260" height="90" rx="8" fill="#47a248" filter="url(#shadow)"/>
+    <text x="510" y="595" font-family="Arial, sans-serif" font-size="13" font-weight="bold" text-anchor="middle" fill="white">MONGODB</text>
+    <text x="510" y="610" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="white">DB: student_events</text>
+    
+    <rect x="395" y="620" width="230" height="32" rx="5" fill="rgba(255,255,255,0.25)"/>
+    <text x="405" y="635" font-family="Arial, sans-serif" font-size="8" fill="white">• Network Policy (Zero Trust)</text>
+    <text x="405" y="647" font-family="Arial, sans-serif" font-size="8" fill="white">• Unique Index on event_id</text>
+  </g>
+  
+  <!-- FRECCE FLUSSO DATI -->
+  <!-- Client → Kong -->
+  <path d="M 230 110 L 295 110" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="262" y="100" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">HTTPS</text>
+  
+  <!-- Kong → Producer -->
+  <path d="M 380 150 L 220 205" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="285" y="170" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">Ingest</text>
+  
+  <!-- Kong → Metrics -->
+  <path d="M 620 150 L 780 205" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="685" y="170" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">Query</text>
+  
+  <!-- Producer → Kafka -->
+  <path d="M 180 320 L 180 375" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="190" y="350" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">send()</text>
+  
+  <!-- Kafka → Consumer -->
+  <path d="M 180 520 L 180 565" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="190" y="545" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">poll()</text>
+  
+  <!-- Consumer → MongoDB -->
+  <path d="M 280 615 L 375 615" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)"/>
+  <text x="310" y="605" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">insert_many()</text>
+  
+  <!-- Metrics → MongoDB (query diretta) -->
+  <path d="M 820 320 L 820 540 L 580 565" stroke="#2d3748" stroke-width="2.5" fill="none" marker-end="url(#arrowhead)" stroke-dasharray="4,4"/>
+  <text x="830" y="430" font-family="Arial, sans-serif" font-size="9" fill="#2d3748">Aggregation</text>
+  
+  <!-- NAMESPACE LABELS -->
+  <rect x="720" y="570" width="200" height="90" rx="8" fill="#e2e8f0" stroke="#cbd5e0" stroke-width="2"/>
+  <text x="820" y="595" font-family="Arial, sans-serif" font-size="11" font-weight="bold" text-anchor="middle" fill="#2d3748">NAMESPACES</text>
+  <text x="820" y="615" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#4a5568">kong: Gateway</text>
+  <text x="820" y="630" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#4a5568">kafka: Ingestion</text>
+  <text x="820" y="645" font-family="Arial, sans-serif" font-size="9" text-anchor="middle" fill="#4a5568">metrics: Analytics</text>
+  
+  <!-- LEGEND -->
+  <rect x="50" y="50" width="140" height="1" fill="none"/>
+  <text x="55" y="25" font-family="Arial, sans-serif" font-size="8" fill="#718096">Kubernetes 1.28+ | Strimzi 0.43+</text>
+</svg>
