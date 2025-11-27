@@ -6,7 +6,7 @@ metadata:
 spec:
   podSelector:
     matchLabels:
-      app.kubernetes.io/name: mongodb # Label standard del chart Bitnami
+      app.kubernetes.io/instance: mongo-mongodb # Label standard del chart Bitnami
   policyTypes:
   - Ingress
   ingress:

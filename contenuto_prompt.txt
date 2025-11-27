@@ -297,7 +297,6 @@ def init_producer():
             ssl_cafile=KAFKA_CA if SASL_USERNAME else None,
             value_serializer=lambda v: json.dumps(v).encode("utf-8"),
             acks='all',          # Richiede conferma da tutte le repliche (Durabilità)
-            enable_idempotence=True,
             retries=5,           # Riprova in caso di errori di rete temporanei
             linger_ms=10,        # Attende 10ms per raggruppare i messaggi (Batching)
             batch_size=16384,
@@ -351,14 +350,14 @@ def on_send_error(ex):
 #                     future.add_callback(on_send_success)
 #                     future.add_errback(on_send_error)
                 
-#                 # Se send() non ha dato errori immediati, rimuoviamo dalla coda locale
+#                 # Se send() non ha dato errori immediati, rimuovo dalla coda locale
 #                 local_queue.popleft()
 #                 queued_counter = max(0, queued_counter - 1)
 #             except NoBrokersAvailable:
-#                 # Kafka ancora giù, interrompiamo il ciclo e riproviamo dopo lo sleep
+#                 # Kafka ancora giù, interrompo il ciclo e riprovo dopo lo sleep
 #                 break
 #             except KafkaError as e:
-#                 # Errore specifico di Kafka, logghiamo e riproviamo
+#                 # Errore specifico di Kafka, loggho e riprovo
 #                 print(f"[PRODUCER {POD_NAME}] Errore Kafka durante flush coda: {e}", flush=True)
 #                 time.sleep(0.1)
         
@@ -375,7 +374,7 @@ def on_send_error(ex):
 
 # --- Thread di Background (Gestione Coda Locale) ---
 def flush_loop():
-    global producer
+    global producer, queued_counter, failed_sends
     while not shutdown_flag.is_set():
         # Assicura che il producer sia inizializzato
         with producer_lock:
@@ -406,11 +405,11 @@ def flush_loop():
                 
                 local_queue.task_done()
             except NoBrokersAvailable:
-                # Kafka ancora giù, interrompiamo il ciclo e riproviamo dopo lo sleep
+                # Kafka ancora giù, interrompo il ciclo e riprovo dopo lo sleep
                 try:
                     local_queue.put_nowait(event)
                 except queue.Full:
-                    # Impossibile rimettere in coda, perdiamo l'evento
+                    # Impossibile rimettere in coda, perdo l'evento
                     with counters_lock:
                         failed_sends += 1
                     print(f"[PRODUCER {POD_NAME}] CRITICAL: Lost event during flush, queue full while requeueing", flush=True)
@@ -440,7 +439,7 @@ def try_send_event(event):
     If Kafka is not available, enqueue locally (bounded queue).
     Returns tuple (status, message).
     """
-    global producer, queued_counter
+    global producer, queued_counter, failed_sends
 
     with producer_lock:
         p = producer
@@ -466,7 +465,7 @@ def try_send_event(event):
         with counters_lock:
             global failed_sends
             failed_sends += 1
-        # 3. BACKPRESSURE: Coda piena, rifiutiamo la richiesta
+        # 3. BACKPRESSURE: Coda piena, rifiuto la richiesta
         return ("rejected", "Backpressure active: local queue full, event rejected")
 
 # --- Endpoints ---
@@ -699,7 +698,203 @@ def heartbeat_loop():
     p = pathlib.Path(HEARTBEAT_FILE)
     while True:
         try:
-            # scriviamo semplicemente qualcosa per aggiornare il mtime
+            # scrivo semplicemente qualcosa per aggiornare il mtime
+            p.write_bytes(b"ok")
+        except Exception as e:
+            print(f"[HEARTBEAT] write failed: {e}", flush=True)
+        time.sleep(5)
+
+hb_thread = threading.Thread(target=heartbeat_loop, daemon=True)
+hb_thread.start()
+
+# Buffer locale per il Bulk Insert
+buffer = []
+last_flush = datetime.utcnow()
+
+def log_event(event):
+    t = event.get("type")
+    u = event.get("user_id")
+    eid = event.get("event_id")
+    print(f"[PROCESSED] event_id={eid} Type: {t}, User: {u}", flush=True)
+
+def flush_buffer_and_commit():
+    """
+    Tenta il bulk insert e, se avvenuto con successo, esegue commit.
+    """
+    global buffer, last_flush
+    if not buffer:
+        return True
+
+    # Prepara i documenti
+    docs = []
+    for ev in buffer:
+        eid = ev.get("event_id") or ev.get("eventId") or None
+        if not eid:
+            eid = str(datetime.utcnow().timestamp()) + "-" + (ev.get("user_id","unknown"))
+            ev["event_id"] = eid
+        # Aggiungi ingest timestamp (utile per metriche)
+        ev["_ingest_ts"] = datetime.utcnow().replace(tzinfo=timezone.utc)
+        doc = {"_id": eid, **ev}
+        docs.append(doc)
+
+    try:
+        # Scrittura su DB
+        collection.insert_many(docs, ordered=False)
+
+        print(f"[FLUSH] Inseriti {len(docs)} documenti su MongoDB:", flush=True)
+        for d in docs:
+            print(f"   -> Processed: {d.get('user_id')}", flush=True)
+
+        buffer = []
+        last_flush = datetime.utcnow()
+        consumer.commit()
+        return True
+    
+    except errors.BulkWriteError as bwe:
+        # Gestione Idempotenza: Se ci sono duplicati, Mongo lancia questo errore.
+        # i nuovi sono scritti, i doppi scartati
+        panic = False
+        for err in bwe.details.get('writeErrors', []):
+            if err.get('code') != 11000:
+                print(f"[FATAL] Errore scrittura non gestito: {err}", flush=True)
+                panic = True
+        
+        if panic:
+            print("[CONSUMER] Abort commit a causa di errori gravi DB.", flush=True)
+            return False 
+
+        print(f"[WARN] Duplicati gestiti: {bwe.details.get('nInserted')} inseriti", flush=True)
+        for d in docs: print(f"   -> Processed (o duplicato): {d.get('user_id')}", flush=True)
+        
+        buffer = []
+        last_flush = datetime.utcnow()
+        consumer.commit()
+        return True
+        
+    except Exception as e:
+        print(f"[ERROR] Flush fallito: {e}", flush=True)
+        return False
+
+# --- Ciclo Principale di Consumo ---
+consumer.subscribe([TOPIC])
+
+print(f"[CONSUMER] Iniziato loop di consumo (Polling)...", flush=True)
+
+try:
+    while True:
+        # 1. POLL: Legge messaggi per 1 secondo (1000ms)
+        msg_pack = consumer.poll(timeout_ms=1000)
+
+        for topic_partition, messages in msg_pack.items():
+            for message in messages:
+                buffer.append(message.value)
+
+        # 2. CONTROLLI DI FLUSH (Eseguiti anche se non arrivano messaggi)
+        now = datetime.utcnow()
+
+        buffer_full = len(buffer) >= BUFFER_SIZE
+        timeout_reached = (now - last_flush).total_seconds() >= FLUSH_TIMEOUT
+
+        if buffer and (buffer_full or timeout_reached):
+            ok = flush_buffer_and_commit()
+            if not ok:
+                print("[CONSUMER] Flush fallito, riprovo al prossimo giro...", flush=True)
+                time.sleep(5)
+
+except KeyboardInterrupt:
+    print("Shutdown by user", flush=True)
+    # Tenta un ultimo flush prima di chiudere
+    flush_buffer_and_commit()
+    sys.exit(0)
+except Exception as e:
+    print(f"[FATAL] {e}", flush=True)
+    sys.exit(1)
+
+==================== FINE FILE: src/consumer/consumer.py ====================
+
+==================== FILE: src/consumer/requirements.txt ====================
+kafka-python
+pymongo
+==================== FINE FILE: src/consumer/requirements.txt ====================
+
+==================== FILE: src/consumer/consumer_copy.py ====================
+# consumer.py (bulk + idempotency + flush timeout + heartbeat + _ingest_ts)
+from kafka import KafkaConsumer
+from kafka.errors import NoBrokersAvailable
+from pymongo import MongoClient, errors
+from pymongo.errors import ServerSelectionTimeoutError
+from datetime import datetime, timedelta, timezone
+import json, os, time, sys, threading, pathlib
+
+# --- Configurazione Variabili d'Ambiente ---
+KAFKA_BOOTSTRAP = os.getenv("KAFKA_BOOTSTRAP")
+SASL_USERNAME = os.getenv("SASL_USERNAME")
+SASL_PASSWORD = os.getenv("SASL_PASSWORD")
+KAFKA_CA = os.getenv("KAFKA_CA", "/etc/ssl/certs/kafka/ca.crt")
+TOPIC = os.getenv("KAFKA_TOPIC", "student-events")
+MONGO_URI = os.environ["MONGO_URI"]
+
+# Configurazione del Batching (Bulk Processing)
+BUFFER_SIZE = int(os.getenv("CONSUMER_BUFFER_SIZE", "20"))   # flush ogni N eventi
+FLUSH_TIMEOUT = int(os.getenv("CONSUMER_FLUSH_TIMEOUT", "5"))  # o flush ogni X secondi
+
+# File di Heartbeat per la Liveness Probe di Kubernetes
+HEARTBEAT_FILE = "/tmp/heartbeat"
+
+# --- Connessione Mongo (Retry Loop) ---
+def get_mongo_collection():
+    retries = 0
+    while True:
+        try:
+            print(f"[CONSUMER] Tentativo connessione MongoDB... ({retries+1})", flush=True)
+            client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+            client.admin.command('ping')
+            print("[CONSUMER] Connesso a MongoDB!", flush=True)
+            return client.student_events.events
+        except (ServerSelectionTimeoutError, Exception) as e:
+            retries += 1
+            print(f"[CONSUMER] MongoDB non pronto ({e}). Attendo 5 secondi...", flush=True)
+            time.sleep(5)
+
+# --- Connessione Kafka (Retry Loop) ---
+def get_kafka_consumer():
+    retries = 0
+    while True:
+        try:
+            print(f"[CONSUMER] Tentativo connessione Kafka... ({retries+1})", flush=True)
+            consumer = KafkaConsumer(
+                TOPIC,
+                bootstrap_servers=KAFKA_BOOTSTRAP,
+                security_protocol="SASL_SSL" if SASL_USERNAME else "PLAINTEXT",
+                sasl_mechanism="SCRAM-SHA-512" if SASL_USERNAME else None,
+                sasl_plain_username=SASL_USERNAME if SASL_USERNAME else None,
+                sasl_plain_password=SASL_PASSWORD if SASL_USERNAME else None,
+                ssl_cafile=KAFKA_CA if SASL_USERNAME else None,
+                auto_offset_reset='earliest',
+                group_id='db-consumer-group',
+                enable_auto_commit=False,  # relativo a at-least-once
+                value_deserializer=lambda v: json.loads(v.decode('utf-8'))
+            )
+            print("[CONSUMER] Consumer Kafka pronto e sottoscritto!", flush=True)
+            return consumer
+        except NoBrokersAvailable:
+            retries += 1
+            print(f"[CONSUMER] Kafka non pronto. Attendo 5 secondi...", flush=True)
+            time.sleep(5)
+        except Exception as e:
+            print(f"[CONSUMER] Errore Kafka generico: {e}. Riprovo tra 5s...", flush=True)
+            time.sleep(5)
+
+# --- Setup ---
+collection = get_mongo_collection()
+consumer = get_kafka_consumer()
+
+# heartbeat loop (per liveness probe)
+def heartbeat_loop():
+    p = pathlib.Path(HEARTBEAT_FILE)
+    while True:
+        try:
+            # scrivo semplicemente qualcosa per aggiornare il mtime
             p.write_bytes(b"ok")
         except Exception as e:
             print(f"[HEARTBEAT] write failed: {e}", flush=True)
@@ -803,12 +998,7 @@ except Exception as e:
     print(f"[FATAL] {e}", flush=True)
     sys.exit(1)
 
-==================== FINE FILE: src/consumer/consumer.py ====================
-
-==================== FILE: src/consumer/requirements.txt ====================
-kafka-python
-pymongo
-==================== FINE FILE: src/consumer/requirements.txt ====================
+==================== FINE FILE: src/consumer/consumer_copy.py ====================
 
 ==================== FILE: k8s/00-infrastructure/kafka-cluster.yaml ====================
 apiVersion: kafka.strimzi.io/v1beta2
@@ -1390,6 +1580,811 @@ spec:
   type: ClusterIP
 
 ==================== FINE FILE: k8s/02-apps/metrics-deployment.yaml ====================
+
+==================== FILE: demo/02_resilience.sh ====================
+#!/bin/bash
+source ./00_common.sh
+
+print_header "FASE 2: RESILIENZA & FAULT TOLERANCE"
+
+# Funzione helper per contare i documenti nel DB
+get_mongo_count() {
+    PASS=$(kubectl get secret -n kafka mongo-mongodb -o jsonpath="{.data.mongodb-root-password}" | base64 -d)
+    kubectl exec -n kafka deployment/mongo-mongodb -c mongodb -- mongosh -u root -p $PASS --authenticationDatabase admin --eval 'db.getSiblingDB("student_events").events.countDocuments()' --quiet 2>/dev/null | tr -d '\r\n '
+}
+
+# Funzione helper per listare gli ID (utile per debug visuale)
+get_mongo_list() {
+    PASS=$(kubectl get secret -n kafka mongo-mongodb -o jsonpath="{.data.mongodb-root-password}" | base64 -d)
+    # Estrae solo user_id e ordina per leggibilità
+    kubectl exec -n kafka deployment/mongo-mongodb -c mongodb -- mongosh -u root -p $PASS --authenticationDatabase admin --eval 'db.getSiblingDB("student_events").events.find({}, {user_id: 1, _id: 0}).sort({user_id: 1})' --quiet 2>/dev/null
+}
+
+# --- PRE-CHECK ---
+step "0. Stato Iniziale del Sistema"
+log "Verifica Database prima del test..."
+INIT_COUNT=$(get_mongo_count)
+echo -e "Documenti nel DB: ${YELLOW}$INIT_COUNT${NC}"
+
+# Se il DB non è vuoto (magari il reset in 00_common ha fallito), lo forza qui
+if [ "$INIT_COUNT" != "0" ]; then
+    reset_db 
+fi
+
+# --- SCENARIO 1: CONSUMER DOWN ---
+step "Scenario 1: Data Loss Prevention (Buffering)"
+
+log "1. Spegnimento Consumer..."
+run kubectl scale deploy/consumer -n kafka --replicas=0
+# Attende che il pod sia effettivamente terminato
+kubectl wait --for=delete pod -l app=consumer -n kafka --timeout=60s >/dev/null 2>&1
+
+log "2. Invio 5 Messaggi nel 'Vuoto'..."
+for i in {1..5}; do
+    run curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -d "{\"user_id\":\"offline-msg-$i\"}"
+done
+echo -e "${GREEN} (5 Messaggi Inviati e Accettati)${NC}"
+
+log "3. Ripristino Consumer..."
+run kubectl scale deploy/consumer -n kafka --replicas=1
+echo "Attendo avvio e processamento della coda (10s)..."
+sleep 10
+
+step "Verifica Risultati (Database Audit)"
+
+FINAL_COUNT=$(get_mongo_count)
+echo -e "Documenti attesi: ${CYAN}5${NC}"
+echo -e "Documenti trovati: ${YELLOW}$FINAL_COUNT${NC}"
+
+if [ "$FINAL_COUNT" == "5" ]; then
+    echo -e "\n${BLUE}--- Contenuto del DB ---${NC}"
+    get_mongo_list
+    echo -e "${BLUE}----------------------${NC}"
+else
+    echo "ATTENZIONE: Conteggio errato. Controlla i log: kubectl logs -n kafka -l app=consumer"
+fi
+
+pause
+
+# --- SCENARIO 2: PRODUCER HA ---
+step "Scenario 2: High Availability (Zero Downtime)"
+
+# Scaliamo a 2 per avere ridondanza
+kubectl scale deploy/producer -n kafka --replicas=2 >/dev/null
+kubectl rollout status deploy/producer -n kafka >/dev/null
+
+POD_NAME=$(kubectl get pods -n kafka -l app=producer -o jsonpath="{.items[0].metadata.name}")
+log "Target Kill: $POD_NAME"
+
+# Kill asincrono del pod e richiesta simultanea
+# L'obiettivo è vedere se Kong sposta il traffico sull'altro pod
+kubectl delete pod $POD_NAME -n kafka --wait=false >/dev/null 2>&1 &
+sleep 0.5
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/event/login" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id": "ha-check"}')
+
+if [[ "$HTTP_CODE" == "200" || "$HTTP_CODE" == "202" ]]; then
+    echo -e "\n${GREEN}SUCCESSO: Codice $HTTP_CODE ricevuto. Traffico gestito dalla replica sana.${NC}"
+else
+    echo -e "\n${RED}FALLITO: Ricevuto $HTTP_CODE.${NC}"
+fi
+
+# Cleanup: torna a 1 replica
+kubectl scale deploy/producer -n kafka --replicas=1 >/dev/null
+
+# --- SCENARIO 3: KAFKA HA ---
+step "Scenario 3: Infrastructure Resilience (Kafka Broker Failure)"
+log "Simulo il crash di un nodo del cluster Kafka mentre invio dati."
+
+# 1. Identifica il broker leader (o uno a caso)
+BROKER_POD="uni-it-cluster-broker-0" 
+log "Target Broker: $BROKER_POD"
+
+# 2. Avvia invio continuo in background (30 messaggi)
+echo -e "${YELLOW}Inizio invio messaggi background...${NC}"
+(
+  for i in {1..30}; do
+     curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d "{\"user_id\":\"ha-kafka-$i\"}"
+     sleep 0.5 
+  done
+) &
+BG_PID=$!
+
+sleep 2
+# 3. KILL DEL BROKER
+log "KILLING KAFKA BROKER: $BROKER_POD"
+kubectl delete pod $BROKER_POD -n kafka --wait=false >/dev/null 2>&1
+
+log "Il broker sta riavviando... il producer continua a funzionare (grazie a retries e repliche)."
+wait $BG_PID
+echo -e "${GREEN}Invio terminato.${NC}"
+
+# 4. Verifica finale
+log "Verifica dati nel DB..."
+sleep 10 
+
+FINAL_COUNT_HA=$(get_mongo_count)
+echo -e "Messaggi totali nel DB: ${YELLOW}$FINAL_COUNT_HA${NC}"
+==================== FINE FILE: demo/02_resilience.sh ====================
+
+==================== FILE: demo/05_governance.sh ====================
+#!/bin/bash
+source ./00_common.sh
+
+print_header "FASE 5: GOVERNANCE (RATE LIMITING)"
+
+step "SCENARIO A: Test CON Rate Limiting (3 req/sec)"
+
+log "1. Applicazione Policy..."
+# Creazione risorsa con limite abbassato a 3
+cat <<EOF | kubectl apply -f - >/dev/null
+apiVersion: configuration.konghq.com/v1
+kind: KongPlugin
+metadata:
+  name: rate-limit
+  namespace: kafka
+plugin: rate-limiting
+config:
+  second: 3
+  policy: local
+EOF
+
+log "2. Attivazione su Ingress Producer..."
+kubectl annotate ingress producer-ingress -n kafka --overwrite \
+  konghq.com/plugins="cors-plugin,jwt-auth,rate-limit" >/dev/null
+
+log "3. Esecuzione Flood Test (20 richieste)..."
+echo -e "${YELLOW}[Flood in corso... Attendi risultati]${NC}"
+
+# Array per salvare i codici
+results=()
+
+for i in {1..20}; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE_URL/event/login" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"user_id\":\"flood-$i\"}")
+  results+=($CODE)
+done
+
+# Stampa differita dei risultati
+echo ""
+count_blocked=0
+for i in "${!results[@]}"; do
+  req_num=$((i+1))
+  code="${results[$i]}"
+  
+  if [ "$code" == "429" ]; then
+    echo -e "Req $req_num: ${RED}BLOCKED (429)${NC}"
+    ((count_blocked++))
+  else
+    echo -e "Req $req_num: ${GREEN}OK ($code)${NC}"
+  fi
+done
+
+if [ $count_blocked -gt 0 ]; then
+    echo -e "\n${GREEN}>>> SUCCESSO: $count_blocked richieste su 20 sono state bloccate.${NC}"
+else
+  echo -e "\n${RED}>>> FALLITO: Nessuna richiesta bloccata. Il rate limiting non sembra attivo.${NC}"
+fi
+
+pause
+
+step "SCENARIO B: Test SENZA Rate Limiting (Verifica)"
+
+log "1. Rimozione Policy..."
+kubectl annotate ingress producer-ingress -n kafka --overwrite konghq.com/plugins="cors-plugin,jwt-auth" >/dev/null
+sleep 2
+
+log "2. Esecuzione Flood Test (20 richieste)..."
+echo -e "${YELLOW}[Flood in corso... Attendi risultati]${NC}"
+
+results_clean=()
+for i in {1..20}; do
+  CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+  -X POST "$BASE_URL/event/login" \
+  -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+  -d "{\"user_id\":\"flood-clean-$i\"}")
+  results_clean+=($CODE)
+done
+
+# Verifica rapida
+blocked_clean=0
+for code in "${results_clean[@]}"; do
+  if [ "$code" == "429" ]; then ((blocked_clean++)); fi
+done
+
+if [ $blocked_clean -eq 0 ]; then
+    echo -e "${GREEN}>>> VERIFICA OK: Tutte le richieste sono passate (200 OK).${NC}"
+else
+    echo -e "${RED}>>> ERRORE: Ancora $blocked_clean blocchi rilevati!${NC}"
+fi
+
+# Cleanup finale silenzioso
+kubectl delete -f ../KONG+KAFKA/K8s/hpa.yaml >/dev/null 2>&1
+kubectl delete kongplugin rate-limit -n kafka >/dev/null 2>&1
+==================== FINE FILE: demo/05_governance.sh ====================
+
+==================== FILE: demo/03_scalability.sh ====================
+#!/bin/bash
+source ./00_common.sh
+
+print_header "FASE 3: SCALABILITÀ & PERFORMANCE"
+
+# --- FIX CRITICO: DISATTIVAZIONE HPA ---
+# Se l'HPA è attivo, sovrascrive i comandi manuali di scaling.
+# Lo cancelliamo temporaneamente per questo test.
+step "0. Preparazione Ambiente"
+log "Disattivo Horizontal Pod Autoscaler (HPA) per test manuale..."
+kubectl delete hpa --all -n kafka >/dev/null 2>&1
+log "HPA rimosso. Ora ho il controllo manuale delle repliche."
+
+# --- TEST 1: LOAD BALANCING ---
+step "1. Test Load Balancing (Round Robin)"
+log "Scalo a 3 repliche e verifico che Kong distribuisca il carico."
+
+run kubectl scale deploy/producer -n kafka --replicas=3
+echo "Attendo propagazione (10s)..."
+kubectl rollout status deploy/producer -n kafka >/dev/null
+sleep 10 
+
+log "Invio 6 richieste consecutive."
+for i in {1..6}; do
+    echo -e "${YELLOW}$ curl ... req-$i${NC}"
+    # Greppa l'header 'processed_by' per vedere quale pod risponde
+    curl -s "$BASE_URL/event/login" \
+        -H "Authorization: Bearer $TOKEN" \
+        -H "Content-Type: application/json" \
+        -H "Connection: close" \
+        -d "{\"user_id\":\"lb-test-$i\"}" | grep -o '"processed_by":"[^"]*"'
+done
+pause
+
+# --- TEST 2: THROUGHPUT ---
+step "2. Throughput Test: 3 Repliche vs 1 Replica"
+log "Lancio 500 richieste in parallelo per misurare il tempo di esecuzione."
+
+step "TEST A: High Scale (3 Repliche)"
+echo "Esecuzione in corso... (Attendere)"
+# time misura quanto ci mette il blocco a finire
+time (
+  for i in {1..10}; do
+    ( for j in {1..50}; do
+        curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -H "Connection: close" \
+        -d "{\"user_id\":\"perf\"}"
+      done ) & 
+  done
+  wait
+)
+
+step "Scaling Down a 1 Replica..."
+run kubectl scale deploy/producer -n kafka --replicas=1
+echo "Attendo shutdown dei pod in eccesso..."
+kubectl rollout status deploy/producer -n kafka >/dev/null
+sleep 5
+
+step "TEST B: Low Scale (1 Replica)"
+echo "Esecuzione in corso... (Attendere)"
+time (
+  for i in {1..10}; do
+    ( for j in {1..50}; do
+        curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+        -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+        -H "Connection: close" \
+        -d "{\"user_id\":\"perf\"}"
+      done ) & 
+  done
+  wait
+)
+
+echo -e "\n${GREEN}Confronto completato: con 3 repliche il tempo 'real' dovrebbe essere inferiore.${NC}"
+==================== FINE FILE: demo/03_scalability.sh ====================
+
+==================== FILE: demo/06_functional_test.sh ====================
+#!/bin/bash
+source ./00_common.sh
+
+print_header "TEST FUNZIONALE: BUSINESS LOGIC (Happy Path)"
+
+# 1. Reset per avere dati puliti e controllabili
+reset_db
+
+step "1. Simulazione Attività Utenti"
+log "Generazione traffico realistico (Login, Quiz, Download)..."
+
+# --- UTENTE 1: MARIO (Studente Modello) ---
+log "👤 Mario: Fa login, scarica le slide e prende 30 al quiz."
+run curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"mario"}'
+
+run curl -s -o /dev/null -X POST "$BASE_URL/event/download" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"mario", "materiale_id":"slide-k8s-pdf", "course_id":"cloud"}'
+
+run curl -s -o /dev/null -X POST "$BASE_URL/event/quiz" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"mario", "quiz_id":"quiz-1", "course_id":"cloud", "score": 30}'
+
+# --- UTENTE 2: LUIGI (Studente Pigro) ---
+log "👤 Luigi: Fa solo login e prende 18 al quiz."
+run curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"luigi"}'
+
+run curl -s -o /dev/null -X POST "$BASE_URL/event/quiz" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"luigi", "quiz_id":"quiz-1", "course_id":"cloud", "score": 18}'
+
+# --- UTENTE 3: PEACH (Pianificatrice) ---
+log "👤 Peach: Fa login e prenota un esame."
+run curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"peach"}'
+
+run curl -s -o /dev/null -X POST "$BASE_URL/event/exam" \
+    -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+    -d '{"user_id":"peach", "esame_id":"appello-gennaio", "course_id":"cloud"}'
+
+echo -e "${GREEN}>>> Eventi inviati. Attendo elaborazione asincrona (5s)...${NC}"
+sleep 5
+
+# --- VERIFICA METRICHE ---
+step "2. Verifica Dashboard (Metrics Service)"
+METRICS_URL="http://metrics.$IP.nip.io:$PORT/metrics"
+
+# Helper per chiamare metrics
+check_metric() {
+    ENDPOINT=$1
+    DESC=$2
+    echo -e "\n${YELLOW}[GET] $DESC${NC}"
+    curl -s "$METRICS_URL$ENDPOINT" -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+}
+
+# 1. Logins
+# Ci aspettiamo 3 login (Mario, Luigi, Peach)
+check_metric "/logins" "Totale Login (Atteso: 3)"
+
+# 2. Quiz Average
+# Media voti: (30 + 18) / 2 = 24
+check_metric "/quiz/average-score" "Media Voti per Corso (Atteso: Cloud -> 24)"
+
+# 3. Quiz Success Rate
+# Entrambi >= 18, quindi 100%
+check_metric "/quiz/success-rate" "Tasso di Successo Quiz (Atteso: 100%)"
+
+# 4. Activity Trend
+# Deve mostrare l'attività di oggi
+check_metric "/activity/last7days" "Trend Attività (Ultimi 7gg)"
+
+echo -e "\n${GREEN}✅ Test Funzionale Completato.${NC}"
+==================== FINE FILE: demo/06_functional_test.sh ====================
+
+==================== FILE: demo/00_common.sh ====================
+#!/bin/bash
+
+# --- COLORI & STILE ---
+# Definizioni ANSI per rendere l'output leggibile e professionale
+GREEN='\033[0;32m'
+RED='\033[0;31m'
+BLUE='\033[0;34m'
+YELLOW='\033[1;33m'
+CYAN='\033[0;36m'
+NC='\033[0m' # No Color (Reset)
+
+# --- FUNZIONI CORE ---
+
+# Stampa un titolo di sezione (Step) in Ciano
+step() { echo -e "\n${CYAN}### $1 ###${NC}"; }
+
+# Esegue un comando stampandolo prima in Giallo (simula verbose mode)
+# Redirige l'echo del comando su stderr per non sporcare eventuali pipe
+run() {
+    echo -e "${YELLOW}$ $*${NC}" >&2
+    "$@"
+}
+
+# Pulisce lo schermo e stampa l'intestazione principale della demo
+print_header() {
+    clear
+    echo -e "${BLUE}================================================${NC}"
+    echo -e "${BLUE}# $1${NC}"
+    echo -e "${BLUE}================================================${NC}"
+}
+
+# Log informativi (Verde) e di Errore (Rosso)
+log() { echo -e "${GREEN}[INFO]${NC} $1"; }
+error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# Mette in pausa lo script finché l'utente non preme Invio
+pause() { echo -e "\n${CYAN}>>> Premi INVIO per continuare...${NC}"; read; }
+
+# --- SETUP PERCORSI ---
+# Calcola la directory assoluta dove si trova questo script per evitare errori di path relativi
+COMMON_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
+JWT_SCRIPT="$COMMON_DIR/../JWTtoken/gen_jwt.py"
+
+# --- SETUP AMBIENTE ---
+# Recupera IP di Minikube e Porta di Kong dinamicamente
+export IP=$(minikube ip)
+export PORT=$(kubectl get svc -n kong kong-kong-proxy -o jsonpath='{.spec.ports[0].nodePort}')
+export BASE_URL="http://producer.$IP.nip.io:$PORT"
+
+# --- GENERAZIONE TOKEN ---
+# Verifica che lo script Python per il JWT esista
+if [ ! -f "$JWT_SCRIPT" ]; then
+    error "Script JWT non trovato in $JWT_SCRIPT"
+    exit 1
+fi
+
+# Esegue lo script python e salva il token pulito (tr elimina a capo)
+export TOKEN=$(python3 "$JWT_SCRIPT" | tr -d '\r\n')
+
+if [ -z "$TOKEN" ]; then
+    error "Errore: Token generato vuoto."
+    exit 1
+fi
+
+# --- RESET DB AUTOMATICO ---
+# Questa parte viene eseguita ogni volta che fai 'source 00_common.sh'.
+# Garantisce che ogni demo parta da un database vuoto.
+log "Reset ambiente: svuoto la collection 'events' su MongoDB..."
+
+# Recupera la password di root di Mongo dal Secret Kubernetes
+PASS=$(kubectl get secret -n kafka mongo-mongodb -o jsonpath="{.data.mongodb-root-password}" | base64 -d)
+
+# Esegue il comando drop() tramite mongosh dentro il pod
+# >/dev/null 2>&1 nasconde output tecnici non necessari (es. "Defaulted container")
+kubectl exec -n kafka deployment/mongo-mongodb -- mongosh -u root -p $PASS --authenticationDatabase admin --eval 'db.getSiblingDB("student_events").events.drop()' >/dev/null 2>&1
+
+log "Database pulito. Pronto per il test."
+==================== FINE FILE: demo/00_common.sh ====================
+
+==================== FILE: demo/04_autoscaling.sh ====================
+#!/bin/bash
+source ./00_common.sh
+
+print_header "FASE 4: AUTOSCALING (HPA)"
+
+step "Reset Ambiente"
+# Pulizia silenziosa di eventuali HPA precedenti per partire puliti
+kubectl delete hpa --all -n kafka >/dev/null 2>&1
+# Ripristiniamo i plugin dell'ingress (nel caso governance li avesse tolti)
+kubectl annotate ingress producer-ingress -n kafka --overwrite konghq.com/plugins="cors-plugin,jwt-auth" >/dev/null 2>&1
+
+echo -e "${RED}ATTENZIONE: L'HPA richiede tempo (1-2 minuti) per reagire.${NC}"
+
+step "Attivazione HPA"
+# Applica la configurazione dell'Autoscaler
+run kubectl apply -f ../k8s/02-apps/hpa.yaml
+
+echo -e "${CYAN}>>> IMPORTANTE: Guarda ora il terminale HPA (watch kubectl get hpa) <<<${NC}"
+pause
+
+step "Stress Test CPU (Load Generation)"
+log "Lancio 4 processi in parallelo per saturare la CPU."
+
+echo -e "${YELLOW}$ (while true; do curl ...; done) &${NC} [x4 processi]"
+
+# Avvia 4 loop infiniti in background per generare carico
+for i in {1..4}; do
+  (while true; do 
+     curl -s -o /dev/null -X POST "$BASE_URL/event/login" \
+     -H "Authorization: Bearer $TOKEN" -H "Content-Type: application/json" \
+     -d '{"user_id":"stress"}' > /dev/null; 
+  done) &
+done
+
+echo -e "${RED}Stress Test in corso... Premi INVIO per fermare e vedere il cooldown.${NC}"
+
+# --- PUNTO DELL'ERRORE ---
+# Qui c'era scritto 'ad' invece di 'read'
+read 
+# -------------------------
+
+# Uccide i processi di stress test
+kill $(jobs -p) >/dev/null 2>&1
+log "Carico fermato. L'HPA inizierà lo scale-down (richiede tempo)."
+==================== FINE FILE: demo/04_autoscaling.sh ====================
+
+==================== FILE: demo/01_security.sh ====================
+#!/bin/bash
+source ./00_common.sh
+
+print_header "FASE 1: SICUREZZA & SECRETS"
+
+# --- 1. VERIFICA TLS ---
+step "1. Verifica Crittografia (TLS 1.3)"
+log "Controllo che la comunicazione interna verso Kafka sia cifrata."
+
+# Esegue openssl dentro un pod per verificare che il broker risponda in SSL
+# Usa -brief per un output conciso
+run kubectl exec -it -n kafka uni-it-cluster-broker-0 -- \
+  openssl s_client -connect uni-it-cluster-kafka-bootstrap.kafka.svc.cluster.local:9093 -brief </dev/null
+pause
+
+# --- 2. VERIFICA AUTHENTICATION ---
+step "2. Test Autenticazione (JWT Enforcement)"
+log "Provo a chiamare l'API senza token. Kong deve bloccarci (401)."
+
+echo -e "${YELLOW}$ curl ... (no token)${NC}"
+# Fa una richiesta senza Header Authorization e cattura solo il codice HTTP
+HTTP_CODE=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$BASE_URL/event/login" \
+    -H "Content-Type: application/json" \
+    -d '{"user_id":"hacker"}')
+
+if [ "$HTTP_CODE" == "401" ]; then
+    echo -e "Status: ${GREEN}401 Unauthorized${NC} (CORRETTO)"
+else
+    echo -e "Status: ${RED}$HTTP_CODE${NC} (ERRORE - Doveva essere 401)"
+fi
+pause
+
+# --- 3. VERIFICA SECRETS ---
+step "3. Verifica Protezione Credenziali"
+log "Ispeziono il Deployment per confermare che le password non siano in chiaro."
+
+# Estrae la configurazione env dal deployment e la formatta
+run kubectl get deploy -n kafka producer -o json | \
+python3 -c "import sys, json; print(json.dumps(json.load(sys.stdin)['spec']['template']['spec']['containers'][0]['env'], indent=2))"
+
+echo -e "\n${GREEN}Successo: Le variabili usano 'valueFrom: secretKeyRef'.${NC}"
+==================== FINE FILE: demo/01_security.sh ====================
+
+==================== FILE: client/index.html ====================
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UniKafka Dashboard (Full API)</title>
+    <style>
+        :root { --primary: #2563eb; --success: #16a34a; --bg: #f8fafc; --panel: #ffffff; --border: #e2e8f0; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg); margin: 0; padding: 20px; color: #1e293b; }
+        .container { max-width: 1200px; margin: 0 auto; display: grid; grid-template-columns: 320px 1fr; gap: 20px; }
+        
+        /* Sidebar */
+        .sidebar { background: var(--panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border); height: fit-content; }
+        h2 { font-size: 1.1rem; margin-top: 0; border-bottom: 2px solid var(--border); padding-bottom: 10px; color: #334155; }
+        .input-group { margin-bottom: 15px; }
+        label { display: block; font-weight: 600; font-size: 0.85rem; margin-bottom: 5px; color: #64748b; }
+        input, textarea, select { width: 100%; padding: 8px; border: 1px solid #cbd5e1; border-radius: 6px; font-family: monospace; box-sizing: border-box; }
+        input:focus { outline: 2px solid var(--primary); border-color: transparent; }
+        .token-area textarea { height: 60px; font-size: 0.75rem; resize: vertical; background: #eff6ff; border-color: #bfdbfe; }
+
+        /* Main Panel */
+        .main-content { display: flex; flex-direction: column; gap: 20px; }
+        .card { background: var(--panel); padding: 20px; border-radius: 12px; border: 1px solid var(--border); box-shadow: 0 2px 4px rgba(0,0,0,0.02); }
+        
+        /* Form Grid */
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin-bottom: 15px; }
+        
+        /* Buttons */
+        .btn-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+        button { cursor: pointer; padding: 10px; border: none; border-radius: 6px; font-weight: 600; transition: all 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px; }
+        .btn-primary { background: var(--primary); color: white; }
+        .btn-primary:hover { background: #1d4ed8; }
+        .btn-metrics { background: var(--success); color: white; }
+        .btn-metrics:hover { background: #15803d; }
+        .btn-magic { background: #8b5cf6; color: white; width: 100%; margin-bottom: 15px; }
+        .btn-magic:hover { background: #7c3aed; }
+        .btn-clear { background: white; border: 1px solid #cbd5e1; color: #475569; padding: 5px 10px; font-size: 0.8rem; }
+
+        /* Logger */
+        #logger { background: #0f172a; color: #4ade80; padding: 15px; border-radius: 8px; font-family: 'Courier New', monospace; height: 350px; overflow-y: auto; font-size: 0.85rem; white-space: pre-wrap; line-height: 1.4; }
+        .log-entry { border-bottom: 1px solid #1e293b; padding-bottom: 5px; margin-bottom: 5px; }
+        .log-err { color: #f87171; }
+        .log-info { color: #94a3b8; }
+        .log-payload { color: #fbbf24; font-size: 0.8em; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div class="sidebar">
+        <h2>Configurazione</h2>
+        <div class="input-group">
+            <label>Minikube IP</label>
+            <input type="text" id="mk-ip" value="192.168.49.2" onchange="updateUrls()">
+        </div>
+        <div class="input-group">
+            <label>Kong Port</label>
+            <input type="text" id="kong-port" value="30648" onchange="updateUrls()">
+        </div>
+        <div class="input-group token-area">
+            <label>JWT Token</label>
+            <textarea id="jwt-token" placeholder="Incolla qui il token..."></textarea>
+        </div>
+        <hr style="border: 0; border-top: 1px solid #eee; margin: 15px 0;">
+        <div class="input-group">
+            <label>Base URL (Anteprima)</label>
+            <input type="text" id="base-url" readonly style="background: #f1f5f9; color: #64748b; font-size: 0.8em;">
+        </div>
+    </div>
+
+    <div class="main-content">
+        
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                <h2 style="margin:0; border:0;">Producer (Invio Eventi)</h2>
+                <button class="btn-magic" style="width: auto; padding: 8px 15px;" onclick="randomizeData()">Genera Dati Random</button>
+            </div>
+
+            <div class="form-grid">
+                <div class="input-group">
+                    <label>User ID</label>
+                    <input type="text" id="user-id" value="studente-1">
+                </div>
+                <div class="input-group">
+                    <label>Course ID</label>
+                    <input type="text" id="course-id" value="cloud-computing">
+                </div>
+                <div class="input-group">
+                    <label>Resource ID (Quiz/Exam/File)</label>
+                    <input type="text" id="resource-id" value="quiz-101">
+                </div>
+                <div class="input-group">
+                    <label>Score (Voto)</label>
+                    <input type="number" id="score" value="28" min="18" max="30">
+                </div>
+            </div>
+
+            <div class="btn-grid">
+                <button class="btn-primary" onclick="sendEvent('login')">Login</button>
+                <button class="btn-primary" onclick="sendEvent('quiz')">Submit Quiz</button>
+                <button class="btn-primary" onclick="sendEvent('download')">Download</button>
+                <button class="btn-primary" onclick="sendEvent('exam')">Prenota Esame</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <h2>Metrics (Lettura Dati)</h2>
+            <div class="btn-grid">
+                <button class="btn-metrics" onclick="fetchMetric('/healthz')">Health Check</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/logins')">Total Logins</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/logins/average')">Avg Logins/User</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/quiz/success-rate')">Quiz Success Rate</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/quiz/average-score')">Avg Score/Course</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/downloads')">Top Downloads</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/exams')">Exam Bookings</button>
+                <button class="btn-metrics" onclick="fetchMetric('/metrics/activity/last7days')">Trend 7 Days</button>
+            </div>
+        </div>
+
+        <div class="card">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <h2 style="margin:0; border:0;">Console Log</h2>
+                <button class="btn-clear" onclick="document.getElementById('logger').innerHTML = ''">Pulisci</button>
+            </div>
+            <div id="logger">Pronto...</div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Dati Random
+    const USERS = ["alice", "bob", "charlie", "dave", "eve", "frank", "grace"];
+    const COURSES = ["cloud-computing", "cyber-security", "data-science", "iot", "web-dev"];
+    const RESOURCES = ["quiz-1", "final-exam", "slide-pdf", "lab-docker", "quiz-2"];
+
+    function updateUrls() {
+        const ip = document.getElementById('mk-ip').value;
+        const port = document.getElementById('kong-port').value;
+        document.getElementById('base-url').value = `http://producer.${ip}.nip.io:${port}`;
+    }
+    
+    function randomizeData() {
+        document.getElementById('user-id').value = USERS[Math.floor(Math.random() * USERS.length)];
+        document.getElementById('course-id').value = COURSES[Math.floor(Math.random() * COURSES.length)];
+        document.getElementById('resource-id').value = RESOURCES[Math.floor(Math.random() * RESOURCES.length)];
+        document.getElementById('score').value = Math.floor(Math.random() * 13) + 18; // 18-30
+        log("Dati casuali generati!", "info");
+    }
+
+    function log(msg, type = 'normal') {
+        const logger = document.getElementById('logger');
+        const time = new Date().toLocaleTimeString();
+        const cls = type === 'error' ? 'log-err' : (type === 'info' ? 'log-info' : (type === 'payload' ? 'log-payload' : ''));
+        
+        const entry = document.createElement('div');
+        entry.className = 'log-entry ' + cls;
+        entry.innerHTML = `[${time}] ${msg}`;
+        logger.insertBefore(entry, logger.firstChild);
+    }
+
+    async function callApi(endpoint, method, body = null, isMetrics = false) {
+        const token = document.getElementById('jwt-token').value.trim();
+        if (!token) {
+            log("[ERROR] Token mancante! Incollalo nella sidebar.", "error");
+            return;
+        }
+
+        const ip = document.getElementById('mk-ip').value;
+        const port = document.getElementById('kong-port').value;
+        // Metrics e Producer usano host diversi
+        const hostPrefix = isMetrics ? 'metrics' : 'producer';
+        const url = `http://${hostPrefix}.${ip}.nip.io:${port}${endpoint}`;
+
+        const headers = {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        };
+
+        log(`[REQ] ${method} ${endpoint}...`);
+        if(body) log(`[DATA] Payload: ${JSON.stringify(body)}`, 'payload');
+
+        try {
+            const options = { method, headers };
+            if (body) options.body = JSON.stringify(body);
+
+            const res = await fetch(url, options);
+            
+            let data;
+            const contentType = res.headers.get("content-type");
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await res.json();
+            } else {
+                data = await res.text(); // Fallback per errori HTML di Kong (404/503)
+            }
+
+            if (res.ok) {
+                log(`[OK] [${res.status}] Success:\n${JSON.stringify(data, null, 2)}`);
+            } else {
+                log(`[ERR] [${res.status}] Error:\n${typeof data === 'object' ? JSON.stringify(data, null, 2) : data}`, "error");
+            }
+        } catch (e) {
+            log(`[NET] Network Error: ${e.message}`, "error");
+        }
+    }
+
+    function sendEvent(type) {
+        const user = document.getElementById('user-id').value;
+        const course = document.getElementById('course-id').value;
+        const resource = document.getElementById('resource-id').value;
+        const score = parseInt(document.getElementById('score').value);
+
+        let body = { user_id: user };
+        let endpoint = "";
+
+        if (type === 'login') {
+            endpoint = "/event/login";
+        } else if (type === 'quiz') {
+            endpoint = "/event/quiz";
+            body.quiz_id = resource;
+            body.course_id = course;
+            body.score = score;
+        } else if (type === 'download') {
+            endpoint = "/event/download";
+            body.materiale_id = resource;
+            body.course_id = course;
+        } else if (type === 'exam') {
+            endpoint = "/event/exam";
+            body.esame_id = resource;
+            body.course_id = course;
+        }
+
+        callApi(endpoint, "POST", body, false);
+    }
+
+    function fetchMetric(endpoint) {
+        callApi(endpoint, "GET", null, true);
+    }
+
+    // Init
+    updateUrls();
+    randomizeData();
+</script>
+
+</body>
+</html>
+==================== FINE FILE: client/index.html ====================
 
 ==================== FILE: JWTtoken/gen_jwt.py ====================
 import jwt, time

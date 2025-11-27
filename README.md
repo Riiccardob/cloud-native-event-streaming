@@ -37,8 +37,6 @@ Il progetto soddisfa i seguenti requisiti architetturali critici:
 ### Sicurezza (Defense in Depth)
 * **Sicurezza Perimetrale:** Autenticazione obbligatoria tramite JWT firmati e protezione da abusi tramite Rate Limiting.
 * **Sicurezza del Canale:** Comunicazione interna criptata (TLS 1.3) e autenticata (SASL/SCRAM) tra microservizi e Kafka.
-* **Isolamento di Rete:** Utilizzo di Network Policies per impedire accessi non autorizzati al Database (solo Consumer e Metrics possono accedere a MongoDB).
-
 ---
 
 ## Guida all'Installazione
@@ -113,8 +111,6 @@ docker build -t metrics-service:latest ./src/metrics
 
 # Deploy Risorse Kubernetes
 kubectl create ns metrics
-# Assicura la label per la network policy
-kubectl label namespace metrics name=metrics --overwrite
 
 kubectl apply -f k8s/00-infrastructure/
 kubectl apply -f k8s/01-security/
@@ -168,4 +164,3 @@ Per generare un token valido per i test, utilizzare lo script fornito in `JWTtok
 | `GET` | `/healthz` | Health check del servizio. |
 
 -----
-```
