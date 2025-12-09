@@ -1,31 +1,43 @@
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
+# Node pool dedicato ai controller: questi nodi partecipano al quorum
+# del controller (KRaft) e gestiscono il metadata log del cluster.
 metadata:
   name: controller
   namespace: kafka
   labels:
     strimzi.io/cluster: uni-it-cluster
 spec:
+  # Numero di repliche dei controller. Deve essere scelto per garantire
+  # tolleranza ai guasti del quorum di controllo.
   replicas: 2
   roles:
     - controller
   storage:
+    # JBOD permette più volumi logici per nodo; qui è usato un singolo volume
     type: jbod
     volumes:
       - id: 0
+        # Persistent Claim: mantiene i dati oltre il ciclo di vita del pod
         type: persistent-claim
         size: 5Gi
+        # Indica che questo volume conterrà i metadata condivisi KRaft
         kraftMetadata: shared
+        # Impedisce la cancellazione automatica del PVC alla rimozione del nodo
         deleteClaim: false
+---
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: KafkaNodePool
+# Node pool per i broker: questi nodi memorizzano i log dei topic e forniscono
+# gli endpoint ai client (producer/consumer).
 metadata:
   name: broker
   namespace: kafka
   labels:
     strimzi.io/cluster: uni-it-cluster
 spec:
+  # Numero di broker che saranno creati per questa pool
   replicas: 2
   roles:
     - broker
@@ -35,9 +47,53 @@ spec:
       - id: 0
         type: persistent-claim
         size: 5Gi
-        #Per i broker, lo storage deve essere SOLO per i log dei dati, non per il metadata quorum. 
-        #kraftMetadata: shared
+        # Nota: lo storage dei broker è destinato ai log dei topic (dati).
+        # Non è abilitato kraftMetadata per i broker perché i metadata
+        # sono gestiti dai controller. Se si volesse condividere metadata
+        # sullo stesso volume, abilitare kraftMetadata: shared.
+        # kraftMetadata: shared
         deleteClaim: false
+---
+apiVersion: kafka.strimzi.io/v1beta2
+kind: Kafka
+metadata:
+  # Definizione principale del cluster Kafka gestito da Strimzi
+  name: uni-it-cluster
+  namespace: kafka
+spec:
+  kafka:
+    # Versione del broker Kafka
+    version: 4.1.0
+    # Versione del metadata (KRaft) utilizzata internamente
+    metadataVersion: 4.1-IV1
+    listeners:
+      - name: plain
+        # Listener interno non cifrato per comunicazioni interne
+        port: 9092
+        type: internal
+        tls: false
+      - name: tls
+        # Listener interno cifrato TLS per connessioni sicure
+        port: 9093
+        type: internal
+        tls: true
+        authentication:
+          # Autenticazione SASL: SCRAM-SHA-512
+          type: scram-sha-512
+    config:
+      # Configurazioni di replica e durabilità. I valori qui impostati
+      # devono essere coerenti con il numero di repliche e le esigenze di HA.
+      # Fattore di replicazione per i topic di offset e transazioni
+      offsets.topic.replication.factor: 2
+      transaction.state.log.replication.factor: 2
+      default.replication.factor: 2
+      # Minimo di In-Sync Replicas: valori più alti aumentano durabilità
+      transaction.state.log.min.isr: 1
+      min.insync.replicas: 1
+  entityOperator:
+    # TopicOperator e UserOperator automatizzano la gestione di topic e utenti
+    topicOperator: {}
+    userOperator: {}
 ---
 apiVersion: kafka.strimzi.io/v1beta2
 kind: Kafka

@@ -220,30 +220,38 @@ def try_send_event(event):
         return ("rejected", "Backpressure active: local queue full, event rejected")
 
 # --- Endpoints ---
+#healthcheck completo --> invaliderebbe fallback producer
+# @app.route("/healthz")
+# def healthz():
+#     """
+#     Endpoint per le Probes di Kubernetes.
+#     Ritorna 503 se Kafka non è connesso, così il pod viene rimosso dal Load Balancer.
+#     """
+#     with producer_lock:
+#         p = producer
+#     with counters_lock:
+#         sc = sent_counter
+#         qc = queued_counter
+#         fs = failed_sends
+
+#     status = {
+#         "status": "ok" if p else "degraded",
+#         "producer_connected": bool(p),
+#         "local_queue_len": local_queue.qsize(),
+#         "queue_capacity": MAX_LOCAL_QUEUE,
+#         "sent_counter": sc,
+#         "queued_counter": qc,
+#         "failed_sends": fs,
+#         "processed_by": POD_NAME
+#     }
+#     return jsonify(status), 200 if p else 503
+
 @app.route("/healthz")
 def healthz():
     """
-    Endpoint per le Probes di Kubernetes.
-    Ritorna 503 se Kafka non è connesso, così il pod viene rimosso dal Load Balancer.
+    Readiness probe: verifica solo che flask sia vivo.
     """
-    with producer_lock:
-        p = producer
-    with counters_lock:
-        sc = sent_counter
-        qc = queued_counter
-        fs = failed_sends
-
-    status = {
-        "status": "ok" if p else "degraded",
-        "producer_connected": bool(p),
-        "local_queue_len": local_queue.qsize(),
-        "queue_capacity": MAX_LOCAL_QUEUE,
-        "sent_counter": sc,
-        "queued_counter": qc,
-        "failed_sends": fs,
-        "processed_by": POD_NAME
-    }
-    return jsonify(status), 200 if p else 503
+    return jsonify({"status": "ready", "processed_by": POD_NAME}), 200
 
 @app.route("/event/login", methods=["POST"])
 def produce_login():

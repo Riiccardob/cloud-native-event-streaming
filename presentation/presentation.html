@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Cloud-Native Architecture Defense</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@500&display=swap');
+
+        :root {
+            --bg-page: #020617;
+            --bg-slide: #0f172a;
+            --bg-panel: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #cbd5e1; /* Reso più chiaro per leggibilità */
+            --accent: #38bdf8;
+            --accent-purple: #818cf8;
+            --border: #334155;
+            
+            /* Code Theme */
+            --code-bg: #0d1117;
+            --kwd: #ff7b72;
+            --str: #a5d6ff;
+            --num: #79c0ff;
+            --cls: #d2a8ff;
+            --com: #8b949e;
+        }
+
+        /* --- PDF FIX CRUCIALE --- */
+        @page {
+            size: 297mm 210mm; /* Forza formato A4 Orizzontale */
+            margin: 0;
+        }
+
+        * { box-sizing: border-box; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+        body {
+            margin: 0;
+            padding: 2rem;
+            background-color: var(--bg-page);
+            font-family: 'Inter', sans-serif;
+            color: var(--text-primary);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2rem;
+        }
+
+        .print-btn {
+            position: fixed;
+            top: 20px; right: 20px;
+            background: var(--accent);
+            color: #0f172a;
+            padding: 12px 24px;
+            border: none; border-radius: 8px;
+            font-weight: 800; font-size: 1rem;
+            cursor: pointer;
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.5);
+            z-index: 9999;
+        }
+        .print-btn:hover { transform: scale(1.05); }
+
+        /* --- SLIDE CONTAINER --- */
+        .slide {
+            width: 297mm;  /* Larghezza esatta A4 */
+            height: 210mm; /* Altezza esatta A4 */
+            
+            /* Riduciamo un po' il padding laterale (da 5rem a 3.5rem) 
+               perché l'A4 è più stretto del 16:9 */
+            padding: 3rem 3.5rem; 
+
+            /* Le altre proprietà rimangono uguali */
+            background: var(--bg-slide);
+            border: 1px solid var(--border);
+            position: relative;
+            overflow: hidden;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            page-break-after: always;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* --- TYPOGRAPHY --- */
+        h1 {
+            font-size: 2.6rem;
+            margin: 0 0 0.5rem 0;
+            color: var(--text-primary);
+            text-transform: uppercase;
+            letter-spacing: -1px;
+            line-height: 1;
+        }
+        h1 span { color: var(--accent); }
+
+        h2 {
+            font-size: 1.4rem;
+            color: var(--text-secondary);
+            margin: 0 0 2.5rem 0;
+            border-bottom: 2px solid var(--border);
+            padding-bottom: 1rem;
+            font-weight: 600;
+        }
+
+        ul { margin: 0; padding-left: 1rem; }
+        
+        li {
+            font-size: 1.4rem; /* TESTO INGRANDITO */
+            margin-bottom: 1.2rem;
+            line-height: 1.4;
+            color: #e2e8f0;
+            list-style: none;
+            position: relative;
+            padding-left: 2rem;
+            font-weight: 500;
+        }
+        li::before {
+            content: "➤";
+            color: var(--accent);
+            position: absolute;
+            left: 0;
+            font-size: 1.2rem;
+            top: 2px;
+        }
+
+        /* --- LAYOUTS --- */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 1.1fr 0.9fr; /* Più spazio al testo */
+            gap: 4rem;
+            height: 100%;
+        }
+
+        /* --- CODE EDITOR --- */
+        .editor-window {
+            background: var(--code-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.4);
+            font-family: 'JetBrains Mono', monospace;
+            font-size: 0.95rem; /* Codice leggermente più grande */
+        }
+        .editor-header {
+            background: #161b22;
+            padding: 10px 15px;
+            border-bottom: 1px solid #30363d;
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .dots { display: flex; gap: 8px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+        .red { background: #ff5f56; } .yellow { background: #ffbd2e; } .green { background: #27c93f; }
+        .filename { color: var(--text-secondary); font-size: 0.8rem; opacity: 0.8; }
+        .editor-content { padding: 1.5rem; color: #c9d1d9; white-space: pre; line-height: 1.6; }
+
+        .kwd { color: var(--kwd); font-weight: bold; }
+        .str { color: var(--str); }
+        .num { color: var(--num); }
+        .com { color: var(--com); font-style: italic; }
+
+        /* --- DIAGRAMS --- */
+        .flow-section {
+            margin-bottom: 2.5rem;
+            background: rgba(30, 41, 59, 0.5);
+            padding: 1.5rem;
+            border-radius: 12px;
+            border: 1px solid var(--border);
+        }
+        .flow-title {
+            font-size: 1rem;
+            color: var(--accent);
+            font-weight: 800;
+            margin-bottom: 1.2rem;
+            display: block;
+            letter-spacing: 0.05em;
+        }
+        .flow-diagram {
+            display: flex; align-items: center; justify-content: space-between;
+        }
+        .node {
+            background: #0f172a;
+            border: 2px solid var(--border);
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 700;
+            color: #fff;
+            position: relative;
+            min-width: 100px; text-align: center;
+        }
+        .node.highlight { border-color: var(--accent); box-shadow: 0 0 15px rgba(56, 189, 248, 0.2); }
+        .arrow { color: var(--text-secondary); font-size: 1.5rem; }
+        
+        .ns-badge {
+            position: absolute; top: -12px; left: 50%; transform: translateX(-50%);
+            font-size: 0.75rem; background: var(--bg-slide); padding: 2px 8px;
+            border: 1px solid var(--accent); color: var(--accent); border-radius: 4px;
+            font-weight: bold;
+        }
+
+        /* --- BOX GRID (Slide 9-10) --- */
+        .box-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 2rem;
+            margin-top: 1rem;
+        }
+        .info-box {
+            background: var(--bg-panel);
+            padding: 2rem;
+            border-radius: 12px;
+            border-left: 6px solid var(--accent);
+            display: flex; flex-direction: column; justify-content: center;
+        }
+        .info-box h3 {
+            margin: 0 0 0.8rem 0;
+            font-size: 1.4rem; /* TITOLO BOX INGRANDITO */
+            color: #fff;
+        }
+        .info-box p {
+            margin: 0;
+            font-size: 1.15rem; /* TESTO BOX INGRANDITO */
+            color: #cbd5e1;
+            line-height: 1.5;
+        }
+
+        /* --- FOOTER --- */
+        .slide-footer {
+            position: absolute; bottom: 2.5rem; left: 5rem; right: 5rem;
+            border-top: 1px solid var(--border); padding-top: 1rem;
+            display: flex; justify-content: space-between;
+            font-size: 0.9rem; color: var(--text-secondary); opacity: 0.7;
+        }
+
+        @media print {
+            body { background: none; padding: 0; display: block; }
+            .print-btn { display: none; }
+            
+            .slide { 
+                width: 297mm; 
+                height: 210mm; 
+                margin: 0; 
+                border: none; 
+                box-shadow: none; 
+                page-break-after: always;
+                /* Importante: resetta padding per sicurezza */
+                padding: 3rem 3.5rem; 
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <button class="print-btn" onclick="window.print()">🖨️ SALVA PDF</button>
+
+    <div class="slide" style="justify-content: center; background: radial-gradient(circle at 80% 20%, #1e293b 0%, #0f172a 70%);">
+        <div style="border-left: 8px solid var(--accent); padding-left: 3rem;">
+            <h1 style="font-size: 4rem; margin-bottom: 1.5rem; line-height: 1.1;">Architettura<br><span>Cloud-Native</span><br>Event-Driven</h1>
+            <h2 style="border: none; margin: 0; font-size: 1.8rem; color: #fff; text-transform: none;">Per Ingestione Eventi Accademici</h2>
+        </div>
+        
+        <div style="margin-top: 5rem; font-size: 1.2rem; color: var(--text-secondary); line-height: 1.8;">
+            <p style="margin:0"><strong>Studente:</strong> Riccardo Barone</p>
+            <p style="margin:0"><strong>Matricola:</strong> 66061A</p>
+            <p style="margin:0"><strong>Anno:</strong> 2025/2026</p>
+        </div>
+    </div>
+
+    <div class="slide">
+        <h1>Contesto</h1>
+        <h2>Panoramica del Progetto</h2>
+        
+        <div style="margin-top: 1rem;">
+            <ul>
+                <li style="margin-bottom: 2rem;">Sistema distribuito su <strong>Kubernetes</strong> per ingestione eventi accademici.</li>
+                <li style="margin-bottom: 2rem;">Architettura <strong>Event-Driven</strong> con disaccoppiamento asincrono.</li>
+                <li style="margin-bottom: 2rem;"><strong>Stack Tecnologico:</strong>
+                    <ul style="margin-top: 1rem; border-left: 2px solid var(--border); padding-left: 1.5rem;">
+                        <li style="font-size: 1.2rem; margin-bottom: 0.8rem;">Gateway: <strong>Kong Ingress Controller</strong></li>
+                        <li style="font-size: 1.2rem; margin-bottom: 0.8rem;">Streaming: <strong>Apache Kafka (Strimzi KRaft)</strong></li>
+                        <li style="font-size: 1.2rem;">Database: <strong>MongoDB</strong></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+        <!-- todo picco info -->
+        <!-- <div style="background: rgba(248, 113, 113, 0.1); border-left: 4px solid var(--danger); padding: 1.5rem; border-radius: 8px; margin-bottom: 2rem;">
+            <h3 style="font-size: 1.4rem; color: var(--danger); margin-bottom: 0.5rem;">💥 Il Problema Reale</h3>
+            <p style="font-size: 1.2rem; color: #e2e8f0; line-height: 1.5;">
+                Durante le <strong>finestre di prenotazione esami</strong>, il traffico aumenta del <strong>1000%</strong> in pochi minuti. 
+                Un'architettura sincrona tradizionale collassa: se MongoDB rallenta, i thread si saturano causando <strong>timeout a catena</strong> per tutti gli studenti.
+            </p>
+        </div> -->
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>2 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Architettura di Sistema</h1>
+        <h2>Pipeline dei Dati & Namespace</h2>
+
+        <div class="flow-section" style="border-left: 6px solid var(--accent);">
+            <span class="flow-title">FLUSSO SCRITTURA (ASINCRONO)</span>
+            <div class="flow-diagram">
+                <div class="node">Client</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KONG</span>Kong</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KAFKA</span>Producer</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KAFKA</span>Kafka</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KAFKA</span>Consumer</div> <!-- ✅ AGGIUNTO -->
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KAFKA</span>Mongo</div>
+            </div>
+        </div>
+
+        <div class="flow-section" style="border-left: 6px solid var(--accent-purple);">
+            <span class="flow-title" style="color: var(--accent-purple);">FLUSSO LETTURA (SINCRONO)</span>
+            <div class="flow-diagram">
+                <div class="node">Client</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KONG</span>Kong</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">METRICS</span>Metrics Svc</div>
+                <div class="arrow">➜</div>
+                <div class="node highlight"><span class="ns-badge">KAFKA</span>Mongo</div>
+            </div>
+        </div>
+
+        <div style="font-size: 1.3rem; text-align: center; margin-top: 2rem; color: var(--text-secondary); font-weight: bold;">
+            Namespace Logici: <span style="color: #fff">kong</span> | <span style="color: #fff">kafka</span> | <span style="color: #fff">metrics</span>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>3 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Kong Gateway</h1>
+        <h2>Sicurezza e Governance</h2>
+        <div class="grid-2">
+            <div>
+                <ul>
+                    <li><strong>JWT Authentication:</strong> Blocco richieste non autenticate (401 Unauthorized).</li>
+                    <li><strong>Rate Limiting:</strong> Protezione da DoS (3 req/sec sul Producer).</li>
+                    <li><strong>CORS:</strong> Gestione accessi cross-origin per webapp.</li>
+                    <li><strong>Service Discovery:</strong> Routing dinamico con Hot-Reload.</li>
+                </ul>
+            </div>
+            <div>
+                <div class="editor-window">
+                    <div class="editor-header">
+                        <div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+                        <span class="filename">k8s/03-gateway/rate-limit.yaml</span>
+                    </div>
+                    <div class="editor-content">
+<span class="kwd">apiVersion</span>: configuration.konghq.com/v1
+<span class="kwd">kind</span>: KongPlugin
+<span class="kwd">metadata</span>:
+  <span class="kwd">name</span>: rate-limit
+<span class="kwd">plugin</span>: rate-limiting
+<span class="kwd">config</span>:
+  <span class="kwd">second</span>: <span class="num">3</span>  <span class="com"># Limite Aggressivo</span>
+  <span class="kwd">policy</span>: local
+  <span class="kwd">hide_client_headers</span>: <span class="num">false</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>4 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Apache Kafka</h1>
+        <h2>Durabilità e Replicazione</h2>
+        <div class="grid-2">
+            <div>
+                <ul>
+                    <li><strong>KRaft Mode:</strong> No ZooKeeper (2 Controller, 2 Broker).</li>
+                    <li><strong>Topic Config:</strong> 3 partizioni, Replication Factor 2.</li>
+                    <li><strong>Min Insync Replicas: 1.</strong> Trade-off disponibilità vs consistenza.</li>
+                    <li><strong>Security:</strong> TLS + SASL/SCRAM-SHA-512.</li>
+                </ul>
+            </div>
+            <div>
+                <div class="editor-window">
+                    <div class="editor-header">
+                        <div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+                        <span class="filename">k8s/00-infrastructure/kafka-cluster.yaml</span>
+                    </div>
+                    <div class="editor-content">
+<span class="kwd">config</span>:
+  <span class="kwd">offsets.topic.replication.factor</span>: <span class="num">2</span>
+  <span class="kwd">transaction.state.log.replication.factor</span>: <span class="num">2</span>
+  <span class="kwd">default.replication.factor</span>: <span class="num">2</span>
+  <span class="kwd">transaction.state.log.min.isr</span>: <span class="num">1</span>
+  <span class="kwd">min.insync.replicas</span>: <span class="num">1</span> <span class="com"># Availability > Consistency</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>5 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Producer Service</h1>
+        <h2>Strategia Ibrida (Circuit Breaker)</h2>
+        <div class="grid-2">
+            <div>
+                <ul>
+                    <li><strong>Invio Asincrono:</strong> Kafka buffer + callback (HTTP 200).</li>
+                    <li><strong>Fallback Locale:</strong> Coda in-memory → HTTP 202 (Se Kafka Down).</li>
+                    <ul style="margin-top: 1rem; border-left: 2px solid var(--border); padding-left: 1.5rem;">
+                        <li style="font-size: 1.2rem; margin-bottom: 0.8rem;"><strong>Thread background:</strong> Retry automatico ogni 3 secondi.</li>
+                    </ul>
+                    <li><strong>Backpressure:</strong> Coda piena → HTTP 503.</li>
+                </ul>
+            </div>
+            <div>
+                <div class="editor-window">
+                    <div class="editor-header">
+                        <div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+                        <span class="filename">src/producer/producer.py</span>
+                    </div>
+                    <div class="editor-content">
+<span class="kwd">def</span> try_send_event(event):
+    <span class="kwd">if</span> producer:
+        producer.send(TOPIC, event)
+        <span class="kwd">return</span> <span class="str">"200 OK"</span>
+    
+    <span class="com"># Kafka Unreachable -> Fallback RAM</span>
+    <span class="kwd">try</span>:
+        local_queue.put_nowait(event)
+        <span class="kwd">return</span> <span class="str">"202 Accepted"</span>
+    <span class="kwd">except</span> queue.Full:
+        <span class="kwd">return</span> <span class="str">"503 Unavailable"</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>6 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Consumer Service</h1>
+        <h2>Durabilità & Idempotenza</h2>
+        <div class="grid-2">
+            <div>
+                <ul>
+                    <li><strong>Auto-commit OFF:</strong> Commit offset manuale solo POST-scrittura DB.</li>
+                    <li><strong>Bulk Insert:</strong> Buffer 20 eventi o timeout 5s.</li>
+                    <li><strong>Idempotenza:</strong> <code>_id: event_id</code> su MongoDB (Deduplica).</li>
+                    <li>Semantica <strong>Exactly-Once</strong> a livello storage.</li>
+                </ul>
+            </div>
+            <div>
+                <div class="editor-window">
+                    <div class="editor-header">
+                        <div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+                        <span class="filename">src/consumer/consumer.py</span>
+                    </div>
+                    <div class="editor-content">
+<span class="kwd">try</span>:
+    <span class="com"># Scrittura Atomica Batch</span>
+    collection.insert_many(docs, ordered=<span class="kwd">False</span>)
+    consumer.commit()
+<span class="kwd">except</span> errors.BulkWriteError <span class="kwd">as</span> bwe:
+    <span class="com"># Ignora errore 11000 (Duplicati)</span>
+    <span class="kwd">if</span> only_duplicates(bwe):
+        consumer.commit()</div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>7 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Horizontal Pod Autoscaler</h1>
+        <h2>Scaling Dinamico</h2>
+        <div class="grid-2">
+            <div>
+                <ul>
+                    <li><strong>HPA:</strong> Il sistema scala orizzontalmente in modo automatico</li>
+                    <li><strong>Trigger:</strong> CPU > 50% medio su tutte le repliche.</li>
+                    <li><strong>Kong LB:</strong> Round Robin automatico su nuove istanze.</li>
+                    <li><strong>Kafka Rebalancing:</strong> Riassegnazione partizioni Consumer Group.</li>
+                </ul>
+            </div>
+            <div>
+                <div class="editor-window">
+                    <div class="editor-header">
+                        <div class="dots"><div class="dot red"></div><div class="dot yellow"></div><div class="dot green"></div></div>
+                        <span class="filename">k8s/02-apps/hpa.yaml</span>
+                    </div>
+                    <div class="editor-content">
+<span class="kwd">apiVersion</span>: autoscaling/v2
+<span class="kwd">kind</span>: HorizontalPodAutoscaler
+<span class="kwd">spec</span>:
+  <span class="kwd">scaleTargetRef</span>:
+    <span class="kwd">kind</span>: Deployment
+    <span class="kwd">name</span>: producer
+  <span class="kwd">minReplicas</span>: <span class="num">1</span>
+  <span class="kwd">maxReplicas</span>: <span class="num">4</span>
+  <span class="kwd">metrics</span>:
+  - <span class="kwd">type</span>: Resource
+    <span class="kwd">resource</span>:
+      <span class="kwd">name</span>: cpu
+      <span class="kwd">target</span>:
+        <span class="kwd">averageUtilization</span>: <span class="num">50</span></div>
+                </div>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>8 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Resilienza e Self-Healing</h1>
+        <h2>Design for Failure</h2>
+        <div class="box-grid">
+            <div class="info-box">
+                <h3>Readiness Probe</h3>
+                <p>Verifica connettività Kafka/MongoDB. Se fallisce, rimuove il pod dal Load Balancer.</p>
+            </div>
+            <div class="info-box">
+                <h3>Liveness Probe</h3>
+                <p>Heartbeat su file per il Consumer. Se il processo va in deadlock, K8s riavvia il pod.</p>
+            </div>
+            <div class="info-box">
+                <h3>Kafka HA</h3>
+                <p>Leader election automatica se un broker crasha. Il Producer switcha nodo trasparentemente.</p>
+            </div>
+            <div class="info-box">
+                <h3>Durabilità Post-Ingestione</h3>
+                <p>Gli eventi sopravvivono al downtime del Consumer grazie alla retention su disco di Kafka.</p>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>9 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Decisioni Architetturali</h1>
+        <h2>Trade-offs</h2>
+        <div class="box-grid">
+            <div class="info-box" style="border-color: var(--accent-purple);">
+                <h3>Latenza vs Durabilità</h3>
+                <p><code>min.insync.replicas: 1</code>. Privilegiamo l'Availability (scrive anche con 1 broker) vs Consistenza assoluta.</p>
+            </div>
+            <div class="info-box" style="border-color: var(--accent-purple);">
+                <h3>Availability vs Data Loss</h3>
+                <p>Il fallback locale (RAM) salva il servizio se Kafka è down, ma espone a perdita dati se il pod crasha.</p>
+            </div>
+            <div class="info-box" style="border-color: var(--accent-purple);">
+                <h3>Scalabilità Consumer</h3>
+                <p>Limitata fisicamente dal numero di partizioni (3). Scalare oltre è inutile (pod idle).</p>
+            </div>
+            <div class="info-box" style="border-color: var(--accent-purple);">
+                <h3>Caching Metriche</h3>
+                <p>TTL 10s. Dati leggermente "stale" in cambio di protezione del DB da sovraccarico.</p>
+            </div>
+        </div>
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>10 / 11</span></div>
+    </div>
+
+    <div class="slide">
+        <h1>Conclusioni e Validazione</h1>
+        <h2>Proprietà Non Funzionali Verificate</h2>
+        
+        <div style="margin-top: 2rem;">
+            <ul>
+                <li style="margin-bottom: 1.2rem;">
+                    <strong style="color: var(--accent);">Availability & Resilience:</strong> 
+                    <span style="color: #cbd5e1;">Zero Downtime (Pod Kill) & Infrastructure Survival (Broker Crash).</span>
+                </li>
+                
+                <li style="margin-bottom: 1.2rem;">
+                    <strong style="color: var(--accent);">Reliability (Data Safety):</strong> 
+                    <span style="color: #cbd5e1;">Zero Data Loss post-ingestione (Consumer Down test).</span>
+                </li>
+
+                <li style="margin-bottom: 1.2rem;">
+                    <strong style="color: var(--accent);">Scalability & Elasticity:</strong> 
+                    <span style="color: #cbd5e1;">Scaling orizzontale automatico (HPA) e Load Balancing dinamico.</span>
+                </li>
+
+                <li style="margin-bottom: 1.2rem;">
+                    <strong style="color: var(--accent);">Security Defense in Depth:</strong> 
+                    <span style="color: #cbd5e1;">JWT Enforcement, TLS Encryption, Network Isolation.</span>
+                </li>
+            </ul>
+        </div>
+
+        <div style="margin-top: auto; text-align: center;">
+            <h2 style="border: none; color: #fff; font-size: 2rem; margin-bottom: 2rem;">Procediamo con la Demo Live...</h2>
+        </div>
+
+        <div class="slide-footer"><span>Riccardo Barone - 66061A</span><span>11 / 11</span></div>
+    </div>
+
+</body>
+</html>

@@ -41,15 +41,29 @@ spec:
           limits:
             cpu: "500m"
             memory: "256Mi"
+        #versione demo
         livenessProbe:
           exec:
             command:
             - /bin/sh
             - -c
+            # Controlla se il file è vecchio di 30s.
+            # Se il processo è freezato, dopo 30s questo check inizia a fallire.
             - test -f /tmp/heartbeat && [ $(($(date +%s) - $(date -r /tmp/heartbeat +%s))) -lt 30 ]
           initialDelaySeconds: 10
-          periodSeconds: 10
-          failureThreshold: 3
+          periodSeconds: 5       # <--- PRIMA ERA 10. Controlla più spesso.
+          failureThreshold: 1    # <--- PRIMA ERA 3. Basta un errore e riavvia subito.
+        # #versione produzione
+        # livenessProbe:
+        #   exec:
+        #     command:
+        #     - /bin/sh
+        #     - -c
+        #     # Controlla se il file è più vecchio di 30 secondi
+        #     - test -f /tmp/heartbeat && [ $(($(date +%s) - $(date -r /tmp/heartbeat +%s))) -lt 30 ]
+        #   initialDelaySeconds: 10
+        #   periodSeconds: 10    # Controlla ogni 10 secondi
+        #   failureThreshold: 3  # Deve fallire 3 VOLTE consecutive
         volumeMounts:
         - name: kafka-ca
           mountPath: /etc/ssl/certs/kafka
